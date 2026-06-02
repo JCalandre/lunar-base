@@ -13,9 +13,22 @@ from pathlib import Path
 
 ROOT: Path = Path(__file__).resolve().parent.parent
 
-LUNAR_TEAR_DIR: Path = (ROOT.parent / "lunar-tear").resolve()
+# Sibling lunar-tear checkout. Defaults to ../lunar-tear; override with the
+# LUNAR_TEAR_DIR env var if your checkout lives elsewhere (e.g. a versioned
+# release folder). Everything below derives from this, so one override moves
+# the DB and the master-data lookups together.
+_LUNAR_TEAR_ENV: str | None = os.environ.get("LUNAR_TEAR_DIR")
+LUNAR_TEAR_DIR: Path = (
+    Path(_LUNAR_TEAR_ENV).resolve() if _LUNAR_TEAR_ENV else (ROOT.parent / "lunar-tear").resolve()
+)
 GAME_DB_PATH: Path = (LUNAR_TEAR_DIR / "server" / "db" / "game.db").resolve()
 WIZARD_CONFIG_PATH: Path = (LUNAR_TEAR_DIR / "server" / ".wizard.json").resolve()
+
+# Decoded master-data JSON shipped inside lunar-tear (assets/masterdata/*.json)
+# and the extracted mission name list (assets/names/missions.json). Used by the
+# Mission Editor to label missions and resolve categories / active windows.
+LUNAR_TEAR_MASTERDATA_DIR: Path = (LUNAR_TEAR_DIR / "server" / "assets" / "masterdata").resolve()
+MISSION_NAMES_PATH: Path = (LUNAR_TEAR_DIR / "server" / "assets" / "names" / "missions.json").resolve()
 
 DATA_DIR: Path = ROOT / "data"
 BACKUP_DIR: Path = DATA_DIR / "backups"
