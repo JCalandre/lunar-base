@@ -233,8 +233,8 @@ def _load_panels_by_character() -> dict[int, list[int]]:
 def _ensure_shim_available() -> None:
     if not config.GRANT_EXE_PATH.exists():
         raise UpgradeError(
-            f"grant.exe not found at {config.GRANT_EXE_PATH}. "
-            "Run setup.bat to build it (Go must be on PATH)."
+            f"{config.GRANT_EXE_PATH.name} not found at {config.GRANT_EXE_PATH}. "
+            f"Run {config.SETUP_SCRIPT} to build it (Go must be on PATH)."
         )
 
 

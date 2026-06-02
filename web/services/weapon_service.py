@@ -195,12 +195,12 @@ def get_catalog() -> list[WeaponRecord]:
     evo_path = config.MASTERDATA_DIR / "EntityMWeaponEvolutionGroupTable.json"
     if not names_path.exists():
         raise WeaponError(
-            f"weapons.json not found at {names_path}. Run setup.bat to extract names."
+            f"weapons.json not found at {names_path}. Run {config.SETUP_SCRIPT} to extract names."
         )
     if not evo_path.exists():
         raise WeaponError(
             f"EntityMWeaponEvolutionGroupTable.json not found at {evo_path}. "
-            "Run setup.bat to dump master data."
+            f"Run {config.SETUP_SCRIPT} to dump master data."
         )
 
     try:
@@ -290,8 +290,8 @@ def all_catalog_ids() -> set[int]:
 def _ensure_shim_available() -> None:
     if not config.GRANT_EXE_PATH.exists():
         raise WeaponError(
-            f"grant.exe not found at {config.GRANT_EXE_PATH}. "
-            "Run setup.bat to build it (Go must be on PATH)."
+            f"{config.GRANT_EXE_PATH.name} not found at {config.GRANT_EXE_PATH}. "
+            f"Run {config.SETUP_SCRIPT} to build it (Go must be on PATH)."
         )
 
 

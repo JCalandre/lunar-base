@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from web import config  # noqa: E402
 from web.services import karma_service  # noqa: E402
 
 
@@ -27,7 +28,7 @@ def main() -> None:
     output_path = ROOT / "KARMA_REFERENCE.md"
     catalog_path = ROOT / "data" / "names" / "playable_costumes.json"
     if not catalog_path.exists():
-        sys.exit(f"missing {catalog_path}; run setup.bat to extract names")
+        sys.exit(f"missing {catalog_path}; run {config.SETUP_SCRIPT} to extract names")
 
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     costumes = [r for r in catalog.get("records", []) if int(r.get("RarityType", 0) or 0) == 40]

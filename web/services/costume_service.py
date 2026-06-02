@@ -102,7 +102,7 @@ def get_catalog() -> list[CostumeRecord]:
     if not path.exists():
         raise CostumeError(
             f"playable_costumes.json not found at {path}. "
-            "Run setup.bat to extract names."
+            f"Run {config.SETUP_SCRIPT} to extract names."
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -165,8 +165,8 @@ def all_catalog_ids() -> set[int]:
 def _ensure_shim_available() -> None:
     if not config.GRANT_EXE_PATH.exists():
         raise CostumeError(
-            f"grant.exe not found at {config.GRANT_EXE_PATH}. "
-            "Run setup.bat to build it (Go must be on PATH)."
+            f"{config.GRANT_EXE_PATH.name} not found at {config.GRANT_EXE_PATH}. "
+            f"Run {config.SETUP_SCRIPT} to build it (Go must be on PATH)."
         )
 
 

@@ -8,9 +8,10 @@ if not exist .venv (
 )
 
 call .venv\Scripts\activate.bat
-echo.
-echo === Lunar Base ===
-echo Open http://127.0.0.1:8888 in your browser. Ctrl+C to stop.
-echo.
-python -m uvicorn web.app:app --host 127.0.0.1 --port 8888
+
+rem Bind address / port are resolved in Python (web/config.py): by default it
+rem auto-detects this PC's LAN IP so the app is reachable from other devices and
+rem is NOT served on 127.0.0.1. Override with LUNAR_BASE_HOST / LUNAR_BASE_PORT
+rem (e.g. set LUNAR_BASE_HOST=127.0.0.1 for this-PC-only). See README.
+python -m web
 endlocal

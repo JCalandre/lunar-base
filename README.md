@@ -8,7 +8,7 @@ A browser-based management interface for someone who lives on the moon and manag
 
 ## Requirements
 
-- Windows 10/11
+- Windows 10/11, Linux, or macOS
 - Python 3.10 or newer (tested on 3.14)
 - Go 1.25 or newer on `PATH` *(needed to build the `lunar-base-grant` shim; without it stages 1+ won't work)*
 - A working [Lunar Tear](https://github.com/Walter-Sparrow/lunar-tear) checkout at the sibling path `..\lunar-tear\`
@@ -30,21 +30,69 @@ NierRein Repos\
 
 ### Setup (run once)
 
+**Windows:**
+
 ```bat
 setup.bat
 ```
 
-Creates a virtual environment in `.venv\` and installs Python dependencies from `web\requirements.txt`. Re-run any time dependencies change or after pulling new shim sources.
+**Linux / macOS:**
+
+```sh
+chmod +x setup.sh run-lunar-base.sh   # first time only
+./setup.sh
+```
+
+Creates a virtual environment in `.venv/` and installs Python dependencies from `web/requirements.txt`. Re-run any time dependencies change or after pulling new shim sources.
 
 ### Run
+
+**Windows:**
 
 ```bat
 run-lunar-base.bat
 ```
 
-Then open **http://127.0.0.1:8888** in your browser. Press `Ctrl+C` in the terminal to stop the server.
+**Linux / macOS:**
 
-> The app binds to `127.0.0.1` only — no other machine on your network can reach it.
+```sh
+./run-lunar-base.sh
+```
+
+By default Lunar Base **auto-detects this PC's LAN IP** and binds to it, so the app is reachable from other devices on your network. The startup banner prints the exact address — e.g. `http://192.168.1.42:8888` — use that from this PC *and* from any other device. (Note: with this default `http://127.0.0.1:8888` does **not** work; that's intentional.) Press `Ctrl+C` in the terminal to stop the server.
+
+> On Windows, the first launch may pop a Firewall prompt — allow Python on **Private** networks only.
+
+> [!WARNING]
+> Lunar Base has **no authentication**. Because it is reachable over the network, **anyone who can reach this PC on the network can open the page and edit the game database** (grants, restores, mass upgrades). Only run it on a network you trust, never on public/shared Wi-Fi.
+
+### Changing the bind address / port
+
+The bind address and port are resolved in `web/config.py` and can be overridden with the `LUNAR_BASE_HOST` and `LUNAR_BASE_PORT` environment variables:
+
+| `LUNAR_BASE_HOST` | Effect |
+|---|---|
+| *(unset — default)* | Auto-detect this PC's LAN IP. Reachable on the network; **not** served on `127.0.0.1`. |
+| `0.0.0.0` | Bind every interface, including `127.0.0.1`. Most robust if your LAN IP changes. |
+| `127.0.0.1` | This PC only — nothing on the network can reach it. |
+| a specific IP | Bind exactly that address. |
+
+Examples:
+
+**Windows (PowerShell):**
+
+```powershell
+$env:LUNAR_BASE_HOST = "0.0.0.0"
+.\run-lunar-base.bat
+```
+
+**Linux / macOS:**
+
+```sh
+LUNAR_BASE_HOST=0.0.0.0 ./run-lunar-base.sh
+```
+
+> Auto-detection picks the interface used for your default route. If detection fails (no network), it falls back to `0.0.0.0` so the server still starts. If your LAN IP changes often (e.g. a phone hotspot), `LUNAR_BASE_HOST=0.0.0.0` avoids having to care about the exact address.
 
 ---
 
@@ -114,17 +162,18 @@ lunar-base\
 │   ├── extract_names.py       Resolves entity IDs to English names from lunar-tear's text bundles
 │   └── grant\
 │       ├── src\               Go source for the lunar-base-grant shim
-│       └── grant.exe          Compiled binary (built by setup.bat, gitignored)
+│       └── grant[.exe]        Compiled binary (built by setup.bat / setup.sh, gitignored;
+│                              named grant.exe on Windows, grant elsewhere)
 └── data\         Gitignored — master-data JSON, name maps, and DB backups
 ```
 
 - **`web\`** reads `game.db` directly via the `sqlite3` standard library; all mutations shell out to the Go shim.
-- **`tools\grant\grant.exe`** reads one JSON request from stdin and writes one JSON response to stdout. Implemented actions: `grant_possession`, `grant_batch`, `grant_costume_batch`, `grant_weapon_batch`, `grant_companion_batch`, `grant_thought_batch`, `exalt_characters`, `release_panels`, `upgrade_all_companions`, `upgrade_all_weapons`, `upgrade_all_costumes`, `fill_karma_slots`, `set_costume_karma_batch`, `grant_memoir_batch`, `upgrade_all_memoirs`, `set_memoir_subs_batch`, `mark_contents_stories_played`.
+- **`tools\grant\grant.exe`** (or `tools/grant/grant` on Linux/macOS) reads one JSON request from stdin and writes one JSON response to stdout. Implemented actions: `grant_possession`, `grant_batch`, `grant_costume_batch`, `grant_weapon_batch`, `grant_companion_batch`, `grant_thought_batch`, `exalt_characters`, `release_panels`, `upgrade_all_companions`, `upgrade_all_weapons`, `upgrade_all_costumes`, `fill_karma_slots`, `set_costume_karma_batch`, `grant_memoir_batch`, `upgrade_all_memoirs`, `set_memoir_subs_batch`, `mark_contents_stories_played`.
 - **`tools\extract_names.py`** is adapted from Engels (used with permission).
 
 ### How the Go shim is built
 
-Lunar Base never modifies lunar-tear's source tree, but the shim must import lunar-tear's internal grant code. Go's `internal/` package rule requires the importing code to live inside `lunar-tear/server/`, so `setup.bat` does the following each run:
+Lunar Base never modifies lunar-tear's source tree, but the shim must import lunar-tear's internal grant code. Go's `internal/` package rule requires the importing code to live inside `lunar-tear/server/`, so the setup script (`setup.bat` on Windows, `setup.sh` on Linux/macOS) does the following each run:
 
 1. Copies `tools\grant\src\*.go` into `..\lunar-tear\server\cmd\lunar-base-grant\` (creating it if needed). The `lunar-base-grant` name is distinct from lunar-tear's own commands so its origin is obvious.
 2. Runs `go build` against that directory and writes `grant.exe` back to `tools\grant\grant.exe` inside lunar-base.

@@ -3,7 +3,8 @@
 Run with:
     python -m uvicorn web.app:app --host 127.0.0.1 --port 8888
 
-(or use the run-lunar-base.bat helper)
+(or use the run-lunar-base.bat / run-lunar-base.sh helper, which honor the
+LUNAR_BASE_HOST and LUNAR_BASE_PORT environment variables)
 """
 
 from __future__ import annotations

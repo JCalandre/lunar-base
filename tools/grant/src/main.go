@@ -224,7 +224,11 @@ func runCostumeBatch(req *request) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("load quest catalog: %w", err)
 	}
-	granter := questflow.BuildGranter(catalog)
+	gameConfig, err := masterdata.LoadGameConfig()
+	if err != nil {
+		return 0, fmt.Errorf("load game config: %w", err)
+	}
+	granter := questflow.BuildGranter(catalog, gameConfig)
 
 	db, st, err := openDB(req.DBPath)
 	if err != nil {
@@ -263,7 +267,11 @@ func runWeaponBatch(req *request) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("load quest catalog: %w", err)
 	}
-	granter := questflow.BuildGranter(catalog)
+	gameConfig, err := masterdata.LoadGameConfig()
+	if err != nil {
+		return 0, fmt.Errorf("load game config: %w", err)
+	}
+	granter := questflow.BuildGranter(catalog, gameConfig)
 
 	db, st, err := openDB(req.DBPath)
 	if err != nil {
