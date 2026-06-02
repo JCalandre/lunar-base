@@ -364,6 +364,23 @@ KIND_CONFIG: dict[str, dict[str, Any]] = {
             "QuestMissionConditionValueGroupId",
         ],
     },
+    # Event quest chapters. bundle_key/bundle_dirs are a best guess — if the
+    # generated names come out as "Event Quest <id>", the real text bundle is
+    # named differently; adjust bundle_key/bundle_dirs and re-run.
+    "event_quests": {
+        "bundle_key": "event_quest",
+        "bundle_dirs": ["", "quest"],
+        "master_data_file": "EntityMEventQuestChapterTable.json",
+        "id_field": "EventQuestChapterId",
+        "fallback_prefix": "Event Quest",
+        "extra_fields": [
+            "EventQuestType",
+            "NameEventQuestTextId",
+            "BannerAssetId",
+            "StartDatetime",
+            "EndDatetime",
+        ],
+    },
     "tutorials": {
         "bundle_key": "help",
         "bundle_dirs": [""],
