@@ -236,6 +236,54 @@ def invalidate_name_caches() -> None:
     _event_cat_by_start_cache = None
 
 
+# Manual EventQuestChapterId -> display name overrides. These quests either have
+# no localized name in the extracted data or carry a wrong one, so they would not
+# sort alphabetically in the admin list. An override wins over everything (the
+# extracted name and the category fallback). "\n" reproduces the game's two-line
+# label; it collapses to a space when rendered inline.
+_QUEST_NAME_OVERRIDES: dict[int, str] = {
+    310001: "JP 1.5-Year Anniv. Eve\nChallenge Quest",
+    320001: "JP 1.5-Year Anniv. Eve\nOnce per Day Quests",
+    400019: "Crossover Commemoration\nOnce Per Day Quest",
+    400047: "Crossover Special\nEnhancement Quest",
+    400048: "JP 1.5-Year Anniv.\nSpecial Enhan. Quest",
+    400060: "JP 1.5 Anniv.\nSpecial Enhan. Quest",
+    501: "Record: Den of Madness (Resurrected)",
+    502: "Record: Pure Hills (Resurrected)",
+    503: "Record: Valley of Light (Resurrected)",
+    505: "Record: City of Discontent (Resurrected)",
+    506: "Record: Blood Oath's Edge (Resurrected)",
+    507: "Record: Seat of Shadow (Resurrected)",
+    509: "Record: Sunset Port (Resurrected)",
+    510: "Record: The Cage of Reincarnation (Resurrected)",
+    512: "Record: Garden of Benediction (Resurrected)",
+    514: "Record: Town of Deceit (Resurrected)",
+    515: "Record: Chamber of Prayer (Resurrected)",
+    517: "Record: Bridge of Supplication (Resurrected)",
+    519: "Record: Festive Fountain (Resurrected)",
+    521: "Record: Garden of Paradise (Resurrected)",
+    522: "Record: Foundation of Fortune (Resurrected)",
+    524: "Record: Stronghold of Desolation (Resurrected)",
+    526: "Record: Vestige of Paradise (Resurrected)",
+    527: "Record: Covetous Grove (Resurrected)",
+    531: "Record: Original Sin's Door (Resurrected)",
+    534: "Record: Playful Seas (Resurrected)",
+    539: "Record: Trench of Lost Bonds (Resurrected)",
+    542: "Record: Happy Home (Resurrected)",
+    544: "Record: The Pumpkin Box (Resurrected)",
+    546: "Record: Mechanical Foundation (Resurrected)",
+    551: "Record: The Wishing Spot (Resurrected)",
+    554: "Record: Forest of Temptation (Resurrected)",
+    572: "Record: Happy Home (Resurrected)",
+    581: "Record: A Distant Peak (Resurrected)",
+    584: "Record: Garden of Benediction (Resurrected)",
+    585: "Record: Foundation of Fortune (Resurrected)",
+    587: "Record: Happy Home (Resurrected)",
+    588: "Record: Eternal Steps (Resurrected)",
+    589: "Record: Ritual of Reverie (Resurrected)",
+}
+
+
 def _name(kind: str, row: list) -> str:
     if kind == "banner":
         real = _banner_names().get(int(row[0]))
@@ -244,6 +292,9 @@ def _name(kind: str, row: list) -> str:
         by_start = _event_name_by_start().get(int(row[6] or 0))
         return by_start or _as_str(row[_BANNER_ASSET_COL]) or f"Banner {row[0]}"
     chapter_id = int(row[0])
+    override = _QUEST_NAME_OVERRIDES.get(chapter_id)
+    if override:
+        return override
     name = _quest_names().get(chapter_id)
     if name and not _PLACEHOLDER_RE.match(name):
         return name

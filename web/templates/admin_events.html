@@ -269,7 +269,13 @@
   document.querySelectorAll(".event-list").forEach(list => {
     list.addEventListener("dragstart", e => {
       const row = e.target.closest(".event-row");
-      if (row) row.classList.add("dragging");
+      if (!row) return;
+      row.classList.add("dragging");
+      // Firefox refuses to start a drag unless dataTransfer carries some data.
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", row.dataset.id || ""); } catch (_) {}
+      }
     });
     list.addEventListener("dragend", e => {
       const row = e.target.closest(".event-row");
