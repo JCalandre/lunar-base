@@ -17,6 +17,7 @@ the bin's mtime, hence its reported version).
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -54,6 +55,7 @@ class EventRow:
     start_str: str
     end_str: str
     active: bool
+    category: str = ""
 
 
 def kinds() -> list[_Kind]:
@@ -108,6 +110,37 @@ def _quest_names() -> dict[int, str]:
     return out
 
 
+_banner_names_cache: dict[int, str] | None = None
+
+
+def _banner_names() -> dict[int, str]:
+    """Real summon-banner titles from gacha_banners.json (Engels output), keyed
+    by MomBannerId. Only entries whose title actually resolved (name_found)."""
+    global _banner_names_cache
+    if _banner_names_cache is not None:
+        return _banner_names_cache
+    import json
+    out: dict[int, str] = {}
+    candidates = [
+        config.NAMES_DIR / "gacha_banners.json",
+        config.LUNAR_TEAR_DIR / "server" / "assets" / "names" / "gacha_banners.json",
+    ]
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for rec in data.get("records", []):
+            rid, name = rec.get("id"), rec.get("name")
+            if rec.get("name_found") and isinstance(rid, int) and isinstance(name, str) and name:
+                out[rid] = name
+        break
+    _banner_names_cache = out
+    return out
+
+
 _event_by_start_cache: dict[int, str] | None = None
 
 
@@ -125,6 +158,8 @@ def _event_name_by_start() -> dict[int, str]:
             for r in masterdata_bin.decode_rows("m_event_quest_chapter"):
                 start = int(r[8] or 0)
                 name = names.get(int(r[0]))
+                if name and _PLACEHOLDER_RE.match(name):
+                    name = None  # don't propagate "Event Quest Chapter N" to banners
                 if start and name and start not in out:
                     out[start] = name
         except (FileNotFoundError, KeyError, OSError):
@@ -133,18 +168,86 @@ def _event_name_by_start() -> dict[int, str]:
     return out
 
 
+# Many event-quest chapters have no localized name (Engels can't resolve them
+# either) — they're recurring content. Label them by EventQuestType category
+# instead of "Event Quest Chapter N". Categories derived from the chapters that
+# DO have names (type 1 -> "Record: ...", type 2 -> "Variation: ...", etc.).
+_PLACEHOLDER_RE = re.compile(r"^Event Quest(?: Chapter)? \d+$")
+_EVENT_CATEGORIES = {
+    1: "Record", 2: "Variation", 3: "Subjugation", 4: "Daily", 5: "Guerrilla",
+    6: "Labyrinth", 7: "Tower", 8: "Event", 9: "Special", 10: "Abyss Tower",
+    11: "Chambers of Dusk", 12: "Fate Board",
+}
+
+
+def _category(kind: str, row: list) -> str:
+    """Grouping label. Quests use their EventQuestType ("Record", "Variation",
+    "Tower", …). Banners use the category of the event they launched with (same
+    start date), falling back to the banner's asset-prefix kind."""
+    if kind == "quest":
+        etype = int(row[1]) if len(row) > 1 and row[1] is not None else 0
+        return _EVENT_CATEGORIES.get(etype, f"Type {etype}")
+    cat = _event_category_by_start().get(int(row[6] or 0))
+    if cat:
+        return cat
+    asset = _as_str(row[_BANNER_ASSET_COL])
+    if asset.startswith("common_"):
+        return "Chapter"
+    if asset.startswith("step_up_"):
+        return "Step-Up"
+    if asset.startswith("limited_"):
+        return "Premium"
+    return "Other"
+
+
+def _category_label(row: list) -> str:
+    chapter_id = int(row[0])
+    cat = _category("quest", row)
+    return f"{cat} — Chapter {chapter_id}"
+
+
+_event_cat_by_start_cache: dict[int, str] | None = None
+
+
+def _event_category_by_start() -> dict[int, str]:
+    """Map an event's StartDatetime -> its category, so a summon banner can be
+    grouped by the event it launched alongside (banner & quest share a date)."""
+    global _event_cat_by_start_cache
+    if _event_cat_by_start_cache is not None:
+        return _event_cat_by_start_cache
+    out: dict[int, str] = {}
+    try:
+        for r in masterdata_bin.decode_rows("m_event_quest_chapter"):
+            start = int(r[8] or 0)
+            etype = int(r[1]) if len(r) > 1 and r[1] is not None else 0
+            if start and start not in out:
+                out[start] = _EVENT_CATEGORIES.get(etype, f"Type {etype}")
+    except (FileNotFoundError, KeyError, OSError):
+        pass
+    _event_cat_by_start_cache = out
+    return out
+
+
 def invalidate_name_caches() -> None:
-    global _quest_names_cache, _event_by_start_cache
+    global _quest_names_cache, _banner_names_cache, _event_by_start_cache, _event_cat_by_start_cache
     _quest_names_cache = None
+    _banner_names_cache = None
     _event_by_start_cache = None
+    _event_cat_by_start_cache = None
 
 
 def _name(kind: str, row: list) -> str:
     if kind == "banner":
+        real = _banner_names().get(int(row[0]))
+        if real:
+            return real
         by_start = _event_name_by_start().get(int(row[6] or 0))
         return by_start or _as_str(row[_BANNER_ASSET_COL]) or f"Banner {row[0]}"
     chapter_id = int(row[0])
-    return _quest_names().get(chapter_id) or f"Event Quest {chapter_id}"
+    name = _quest_names().get(chapter_id)
+    if name and not _PLACEHOLDER_RE.match(name):
+        return name
+    return _category_label(row)
 
 
 def _included(kind: str, row: list) -> bool:
@@ -175,6 +278,7 @@ def list_events(kind: str, now_ms: int | None = None) -> list[EventRow]:
             start_str=_fmt(start),
             end_str=_fmt(end),
             active=masterdata_bin.is_active(start, end, now),
+            category=_category(kind, r),
         ))
     rows.sort(key=lambda e: (not e.active, e.id))
     return rows
@@ -208,4 +312,40 @@ def apply(selections: dict[str, list[int]], now_ms: int | None = None) -> dict:
         raise ValueError("no event kinds selected")
     result = masterdata_bin.apply_windows(specs, now)
     result["backup_name"] = Path(result["backup"]).name
+    return result
+
+
+# Display-sort columns per kind. Event quests carry both SortOrder (col 2) and
+# DisplaySortOrder (col 10); set both so whichever the client menu uses is
+# ordered. Summons order by m_mom_banner.SortOrderDesc (col 1), which the server
+# sorts the gacha list by.
+_SORT_COLS = {"quest": [2, 10], "banner": [1]}
+
+
+def reorder(kind: str, ordered_ids: list[int], now_ms: int | None = None) -> dict:
+    """Set a kind's display-sort column to the given explicit order (the i-th id
+    gets sort value i). Ids not in the list are appended after it in id order so
+    every row still gets a rank; unknown ids are dropped. Repacks with a backup.
+    Works for any arrangement — alphabetical, manual drag, by date, etc."""
+    if kind not in _KINDS:
+        raise ValueError(f"unknown kind {kind!r}")
+    cfg = _KINDS[kind]
+    valid = {e.id for e in list_events(kind, now_ms)}
+    ids: list[int] = []
+    seen: set[int] = set()
+    for i in ordered_ids:
+        i = int(i)
+        if i in valid and i not in seen:
+            ids.append(i)
+            seen.add(i)
+    for e_id in sorted(valid - seen):
+        ids.append(e_id)
+    result = masterdata_bin.apply_order([{
+        "table": cfg.table,
+        "id_col": cfg.id_col,
+        "sort_cols": _SORT_COLS[kind],
+        "ordered_ids": ids,
+    }])
+    result["backup_name"] = Path(result["backup"]).name
+    result["count"] = len(ids)
     return result

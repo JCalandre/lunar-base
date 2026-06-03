@@ -263,3 +263,81 @@ def apply_windows(specs: list[dict], now_ms: int | None = None) -> dict:
     backup = _dated_backup(path)
     path.write_bytes(re_encrypted)
     return {"bin": str(path), "backup": str(backup), "tables": results}
+
+
+# --- reorder (set display sort columns) ----------------------------------
+
+def _array_header(n: int) -> bytes:
+    if n <= 15:
+        return bytes([0x90 | n])
+    if n <= 0xFFFF:
+        return b"\xdc" + struct.pack(">H", n)
+    return b"\xdd" + struct.pack(">I", n)
+
+
+def _reorder_blob(table: bytearray, id_col, sort_cols, order_map):
+    """Rebuild the table re-encoding each sort column to a uint16 = order_map[id]
+    for rows whose id is in order_map. Every other column (including int64 dates)
+    and every untouched row is copied byte-for-byte, so only the sort value
+    changes. Handles the column's original encoding being any width."""
+    n, pos = _read_array_len(table, 0)
+    out = bytearray(_array_header(n))
+    changed = 0
+    for _ in range(n):
+        col_count, p = _read_array_len(table, pos)
+        positions = []
+        cp = p
+        for _ in range(col_count):
+            positions.append(cp)
+            cp = _skip(table, cp)
+        end = cp
+        row_id = _read_int(table, positions[id_col])
+        if row_id in order_map:
+            enc = b"\xcd" + struct.pack(">H", order_map[row_id] & 0xFFFF)
+            row = bytearray(_array_header(col_count))
+            for ci in range(col_count):
+                seg = table[positions[ci]:(positions[ci + 1] if ci + 1 < col_count else end)]
+                row += enc if ci in sort_cols else bytes(seg)
+            out += row
+            changed += 1
+        else:
+            out += table[pos:end]
+        pos = end
+    return out, changed
+
+
+def apply_order(specs: list[dict]) -> dict:
+    """Repack the bin so each spec's sort columns rank its rows in the given order.
+
+    specs: [{table, id_col, sort_cols: [int], ordered_ids: [id, ...]}]. The i-th
+    id in ordered_ids gets sort value i (ascending). Rows not listed are left
+    untouched. Writes a dated backup, then overwrites.
+    """
+    path = bin_path()
+    toc, data_blob = _parse(_decrypt(path.read_bytes()))
+    if not isinstance(toc, dict):
+        raise ValueError("unexpected master-data header (no table-of-contents)")
+
+    new_blobs: dict[str, bytes] = {}
+    results = []
+    for spec in specs:
+        name = spec["table"]
+        table, compressed = _table_bytes(toc, data_blob, name)
+        order_map = {int(i): rank for rank, i in enumerate(spec["ordered_ids"])}
+        new_table, changed = _reorder_blob(table, spec["id_col"], set(spec["sort_cols"]), order_map)
+        new_blobs[name] = _build_lz4_ext_blob(bytes(new_table)) if compressed else bytes(new_table)
+        results.append({"table": name, "reordered": changed})
+
+    sorted_tables = sorted(toc.items(), key=lambda kv: kv[1][0])
+    new_toc, parts, offset = {}, [], 0
+    for tname, (o, length) in sorted_tables:
+        part = new_blobs[tname] if tname in new_blobs else data_blob[o:o + length]
+        new_toc[tname] = (offset, len(part))
+        parts.append(part)
+        offset += len(part)
+    new_decrypted = msgpack.packb(new_toc, use_bin_type=True) + b"".join(parts)
+    re_encrypted = AES.new(_KEY, AES.MODE_CBC, _IV).encrypt(pad(new_decrypted, AES.block_size))
+
+    backup = _dated_backup(path)
+    path.write_bytes(re_encrypted)
+    return {"bin": str(path), "backup": str(backup), "backup_name": Path(backup).name, "tables": results}

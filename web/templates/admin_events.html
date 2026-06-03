@@ -23,12 +23,22 @@
     position: sticky; top: 0; z-index: 5;
     display: flex; align-items: center; gap: 14px;
     margin: 0 0 12px; padding: 10px 14px;
-    background: var(--bg-panel, #1b1b1b); border: 1px solid rgba(0,0,0,0.2);
+    background: var(--panel); border: var(--border-thin); color: var(--fg-dark);
   }
   .apply-bar .spacer { flex: 1 1 auto; }
-  .apply-bar .pending { color: var(--accent, #c8a24a); font-size: 12px; letter-spacing: 0.08em; }
+  .apply-bar .pending { color: var(--accent); font-size: 12px; letter-spacing: 0.08em; }
   .apply-btn { font-weight: bold; }
   .apply-btn[disabled] { opacity: 0.5; cursor: default; }
+  .event-row .drag-handle { flex: 0 0 auto; cursor: grab; color: var(--fg-mid); user-select: none; letter-spacing: -2px; }
+  .event-row.dragging { opacity: 0.55; background: rgba(200,162,74,0.30); }
+  .grant-chosen-btn.order-dirty { color: var(--accent); font-weight: bold; }
+  .category-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: var(--border-thin); }
+  .category-bar .cat-label { font-size: 11px; color: var(--fg-mid); letter-spacing: 0.1em; margin-right: 4px; }
+  .cat-chip { padding: 3px 10px; border: 1px solid var(--accent); background: var(--bg-cream); color: var(--fg-dark); cursor: pointer; font-size: 12px; }
+  .cat-chip .cat-count { color: var(--fg-mid); font-size: 11px; margin-left: 2px; }
+  .cat-chip:hover { background: var(--bg-cream-dark); }
+  .cat-chip.all  { background: rgba(45,160,90,0.42); }
+  .cat-chip.some { background: rgba(200,162,74,0.48); }
 </style>
 
 <h1 class="bracket-header">Admin &mdash; Events</h1>
@@ -78,10 +88,23 @@
     <span class="tab-stats">{{ grp.rows | selectattr('active') | list | length }} active / {{ grp.rows | length }} total</span>
     <button type="button" class="grant-chosen-btn" data-all="check" data-kind="{{ grp.key }}">CHECK ALL</button>
     <button type="button" class="grant-chosen-btn" data-all="uncheck" data-kind="{{ grp.key }}">UNCHECK ALL</button>
+    <button type="button" class="grant-chosen-btn" data-sort data-kind="{{ grp.key }}">SORT A&rarr;Z</button>
+    <button type="button" class="grant-chosen-btn" data-saveorder data-kind="{{ grp.key }}">SAVE ORDER</button>
   </div>
+  {% if grp.categories %}
+  <div class="category-bar">
+    <span class="cat-label">CATEGORY &mdash; click to activate/deactivate all:</span>
+    {% for c in grp.categories %}
+    <button type="button" class="cat-chip" data-kind="{{ grp.key }}" data-category="{{ c.name }}">
+      {{ c.name }} <span class="cat-count">{{ c.active }}/{{ c.total }}</span>
+    </button>
+    {% endfor %}
+  </div>
+  {% endif %}
   <div class="panel event-list">
     {% for row in grp.rows %}
-    <label class="event-row" data-kind="{{ grp.key }}" data-id="{{ row.id }}" data-name="{{ row.name|lower }}">
+    <label class="event-row" draggable="true" data-kind="{{ grp.key }}" data-id="{{ row.id }}" data-name="{{ row.name|lower }}" data-category="{{ row.category }}">
+      <span class="drag-handle" title="Drag to reorder">&#9776;</span>
       <input type="checkbox" data-toggle data-initial="{{ '1' if row.active else '0' }}" {% if row.active %}checked{% endif %}>
       <span class="e-name">{{ row.name }}</span>
       <span class="e-id">ID {{ row.id }}</span>
@@ -144,6 +167,20 @@
     if (stats) stats.textContent = `${active} active / ${total} total`;
   }
 
+  function catRows(pane, cat) {
+    return [...pane.querySelectorAll(".event-row")].filter(r => r.dataset.category === cat);
+  }
+  function updateCatChips(pane) {
+    pane.querySelectorAll(".cat-chip").forEach(chip => {
+      const rows = catRows(pane, chip.dataset.category);
+      const active = rows.filter(r => r.querySelector('input[data-toggle]').checked).length;
+      const cnt = chip.querySelector(".cat-count");
+      if (cnt) cnt.textContent = active + "/" + rows.length;
+      chip.classList.toggle("all", rows.length > 0 && active === rows.length);
+      chip.classList.toggle("some", active > 0 && active < rows.length);
+    });
+  }
+
   function refreshDirty() {
     let pending = 0;
     document.querySelectorAll(".event-row").forEach(row => {
@@ -156,8 +193,21 @@
     pendingLabel.textContent = pending === 0
       ? "No pending changes"
       : `${pending} pending change${pending === 1 ? "" : "s"} — not yet applied`;
+    panes.forEach(updateCatChips);
     return pending;
   }
+
+  // ---- category chip: toggle every quest in that category ----
+  document.querySelectorAll(".cat-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const pane = chip.closest(".tab-pane");
+      const rows = catRows(pane, chip.dataset.category);
+      const allActive = rows.length > 0 && rows.every(r => r.querySelector('input[data-toggle]').checked);
+      rows.forEach(r => { const cb = r.querySelector('input[data-toggle]'); if (cb) cb.checked = !allActive; });
+      refreshPane(pane);
+      refreshDirty();
+    });
+  });
 
   // ---- local checkbox toggle (no server call) ----
   document.addEventListener("change", e => {
@@ -180,6 +230,88 @@
       });
       refreshPane(pane);
       refreshDirty();
+    });
+  });
+
+  // ---- order tracking (SORT A→Z and drag both just rearrange the DOM; SAVE ORDER persists) ----
+  function paneRows(pane) { return [...pane.querySelectorAll(".event-row")]; }
+  function currentOrder(pane) { return paneRows(pane).map(r => r.dataset.id).join(","); }
+  const savedOrder = {};
+  panes.forEach(pane => { savedOrder[pane.id] = currentOrder(pane); });
+  function markOrderDirty(pane) {
+    const btn = pane.querySelector("[data-saveorder]");
+    if (btn) btn.classList.toggle("order-dirty", currentOrder(pane) !== savedOrder[pane.id]);
+  }
+
+  // ---- SORT A→Z: rearrange the list in place (client-side; persist with SAVE ORDER) ----
+  document.querySelectorAll("[data-sort]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pane = document.getElementById("tab-" + btn.dataset.kind);
+      const list = pane.querySelector(".event-list");
+      paneRows(pane)
+        .sort((a, b) => (a.dataset.name || "").localeCompare(b.dataset.name || ""))
+        .forEach(row => list.appendChild(row));
+      markOrderDirty(pane);
+      showBanner("Arranged A→Z — drag rows to fine-tune, then SAVE ORDER.", "success");
+    });
+  });
+
+  // ---- drag-to-reorder ----
+  function getDragAfter(list, y) {
+    let closest = { offset: -Infinity, el: null };
+    for (const row of list.querySelectorAll(".event-row:not(.dragging)")) {
+      const box = row.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) closest = { offset, el: row };
+    }
+    return closest.el;
+  }
+  document.querySelectorAll(".event-list").forEach(list => {
+    list.addEventListener("dragstart", e => {
+      const row = e.target.closest(".event-row");
+      if (row) row.classList.add("dragging");
+    });
+    list.addEventListener("dragend", e => {
+      const row = e.target.closest(".event-row");
+      if (row) row.classList.remove("dragging");
+      markOrderDirty(list.closest(".tab-pane"));
+    });
+    list.addEventListener("dragover", e => {
+      e.preventDefault();
+      const dragging = list.querySelector(".event-row.dragging");
+      if (!dragging) return;
+      const after = getDragAfter(list, e.clientY);
+      if (after == null) list.appendChild(dragging);
+      else list.insertBefore(dragging, after);
+    });
+  });
+
+  // ---- SAVE ORDER: persist the current arrangement ----
+  document.querySelectorAll("[data-saveorder]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.busy === "1") return;
+      const kind = btn.dataset.kind;
+      const pane = document.getElementById("tab-" + kind);
+      const ids = paneRows(pane).map(r => parseInt(r.dataset.id, 10));
+      btn.dataset.busy = "1"; btn.disabled = true; const label = btn.textContent; btn.textContent = "SAVING...";
+      try {
+        const res = await fetch("/admin/events/reorder", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({kind, ordered_ids: ids}),
+        });
+        const json = await res.json();
+        if (!json.ok) { showBanner(json.error || "Failed.", "error", true); return; }
+        savedOrder[pane.id] = currentOrder(pane);
+        btn.classList.remove("order-dirty");
+        const reminder = kind === "banner"
+          ? "Restart the lunar-tear server to apply the new order."
+          : "Relaunch the game client to apply the new order.";
+        showBanner(`Saved order of ${json.count} ${kind} entries. Backup: ${json.backup_name}. ${reminder}`, "success", true);
+      } catch (err) {
+        showBanner("Network error: " + err.message, "error", true);
+      } finally {
+        btn.dataset.busy = "0"; btn.disabled = false; btn.textContent = label;
+      }
     });
   });
 
