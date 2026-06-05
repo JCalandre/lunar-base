@@ -18,6 +18,7 @@ from web.routes import backup as backup_routes
 from web.routes import costume_editor as costume_editor_routes
 from web.routes import item_editor as item_editor_routes
 from web.routes import memoir_editor as memoir_editor_routes
+from web.routes import mission_editor as mission_editor_routes
 from web.routes import upgrade_manager as upgrade_manager_routes
 from web.routes import users as users_routes
 from web.routes import weapon_editor as weapon_editor_routes
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(weapon_editor_routes.router)
     app.include_router(upgrade_manager_routes.router)
     app.include_router(memoir_editor_routes.router)
+    app.include_router(mission_editor_routes.router)
     app.include_router(admin_routes.router)
     return app
 

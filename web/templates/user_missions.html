@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Mission Editor :: User {{ user_id }} :: Lunar Base{% endblock %}
+{% block bar_right %}USER {{ user_id }} :: MISSIONS{% endblock %}
+
+{% block content %}
+<style>
+  .mission-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 6px 14px; cursor: pointer;
+    border-bottom: 1px solid rgba(0,0,0,0.10);
+  }
+  .mission-row:hover { background: rgba(0,0,0,0.05); }
+  .mission-row input[type="checkbox"] { flex: 0 0 auto; width: 16px; height: 16px; cursor: pointer; margin: 0; }
+  .mission-row .m-name { flex: 1 1 auto; min-width: 0; }
+  .mission-row .m-id   { flex: 0 0 80px; color: var(--fg-mid); font-size: 12px; }
+  .mission-row .m-cond { flex: 0 0 200px; color: var(--fg-mid); font-size: 12px; text-align: right; }
+  .mission-row.inactive { opacity: .55; }
+  /* completed missions get a persistent green tint */
+  .mission-row:has(input[data-complete]:checked) { background: rgba(45,160,90,0.18); }
+  .mission-row:has(input[data-complete]:checked):hover { background: rgba(45,160,90,0.26); }
+  .panel.grant-list { padding: 0; }
+</style>
+<p style="margin-top:0">
+  <a href="/users/{{ user_id }}">&larr; Back to user {{ user_id }}{% if user_name %} ({{ user_name }}){% endif %}</a>
+</p>
+
+<h1 class="bracket-header">Mission Editor</h1>
+
+<div class="panel panel-corners">
+  <p style="margin:0 0 8px;color:var(--fg-mid);font-size:12px;letter-spacing:0.1em">
+    Lists every mission by category. <strong>Tick a mission</strong> to complete it (status set to
+    your chosen value, progress filled to the clear target); untick to reset it. Use
+    <strong>COMPLETE THIS CATEGORY</strong> / <strong>COMPLETE ALL</strong> for bulk.
+    A backup is taken automatically before every change.
+  </p>
+  <p class="warning-text" style="margin:8px 0 0">
+    &gt; CLEAR (claimable) needs the server's mission-claim RPC to actually hand out the reward in-game.
+    On a stock server use RECEIVED to mark a mission done without granting items.
+  </p>
+  {% if server_running %}
+  <p class="banner error" style="margin:8px 0 0">
+    &gt; lunar-tear appears to be RUNNING ({{ server_running }}). Stop it before editing — a running
+    server overwrites mission rows from memory on its next save.
+  </p>
+  {% endif %}
+</div>
+
+<div id="ajax-banner" class="banner ajax-hidden" role="status" aria-live="polite"></div>
+
+<div class="panel">
+  <div class="search-row" style="flex-wrap:wrap;gap:10px">
+    <label class="row-checkbox"><input type="checkbox" id="hide-completed"><span>hide completed</span></label>
+    <span style="margin-left:auto"></span>
+    <label class="status-choice">Complete as:
+      <select id="global-status">
+        <option value="{{ STATUS_CLEAR }}">CLEAR (claimable)</option>
+        <option value="{{ STATUS_REWARD_RECEIVED }}">RECEIVED (done, no reward)</option>
+      </select>
+    </label>
+    <label class="row-checkbox"><input type="checkbox" id="include-events"><span>include events</span></label>
+    <button type="button" id="complete-all-btn" class="max-all-btn">COMPLETE ALL ACTIVE</button>
+    <button type="button" id="reset-all-btn" class="grant-chosen-btn">RESET ALL ACTIVE</button>
+  </div>
+</div>
+
+<nav class="tab-bar">
+  {% for grp in groups %}
+    <button type="button" class="tab-btn {% if loop.first %}active{% endif %}" data-target="tab-{{ grp.key }}">
+      {{ grp.label }} <span class="tab-count">{{ grp.cleared }}/{{ grp.total }}</span>
+    </button>
+  {% endfor %}
+</nav>
+
+{% for grp in groups %}
+<section id="tab-{{ grp.key }}" class="tab-pane {% if loop.first %}active{% endif %}">
+  <div class="search-row">
+    <label for="search-{{ grp.key }}" class="search-label">FILTER</label>
+    <input type="text" id="search-{{ grp.key }}" class="tab-search" data-tab="{{ grp.key }}"
+           placeholder="Search {{ grp.label|lower }} by name or id...">
+    <span class="tab-stats">{{ grp.cleared }} cleared / {{ grp.total }} total &middot; {{ grp.active_count }} active</span>
+    <button type="button" class="grant-chosen-btn" data-complete-category="{{ grp.category }}">
+      COMPLETE THIS CATEGORY
+    </button>
+    <button type="button" class="grant-chosen-btn" data-reset-category="{{ grp.category }}">
+      RESET THIS CATEGORY
+    </button>
+  </div>
+  <div class="panel grant-list">
+    {% for row in grp.rows %}
+    <label class="mission-row{% if not row.active %} inactive{% endif %}"
+           data-mission-id="{{ row.mission_id }}" data-name="{{ row.name|lower }}" data-id="{{ row.mission_id }}"
+           data-clear-value="{{ row.clear_value }}">
+      <input type="checkbox" data-complete {% if row.status >= STATUS_CLEAR %}checked{% endif %}>
+      <span class="m-name">{{ row.name }}{% if not row.active %} <em>(inactive)</em>{% endif %}</span>
+      <span class="m-id">ID {{ row.mission_id }}</span>
+      <span class="m-cond">{{ row.condition_label }} &ge; {{ "{:,}".format(row.clear_value) }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<script>
+(function() {
+  const userId = {{ user_id }};
+
+  // ---- tabs ----
+  const buttons = document.querySelectorAll(".tab-btn");
+  const panes = document.querySelectorAll(".tab-pane");
+  buttons.forEach(btn => btn.addEventListener("click", () => {
+    const target = btn.dataset.target;
+    buttons.forEach(b => b.classList.toggle("active", b === btn));
+    panes.forEach(p => p.classList.toggle("active", p.id === target));
+  }));
+
+  // ---- filtering (search + hide-completed) ----
+  function hideCompletedOn() { return document.getElementById("hide-completed").checked; }
+
+  function filterPane(pane) {
+    if (!pane) return;
+    const search = pane.querySelector(".tab-search");
+    const q = (search ? search.value : "").trim().toLowerCase();
+    const hideDone = hideCompletedOn();
+    pane.querySelectorAll(".mission-row").forEach(row => {
+      const done = row.querySelector('input[data-complete]').checked;
+      const name = row.dataset.name || "", id = row.dataset.id || "";
+      const matchText = !q || name.includes(q) || id.includes(q);
+      row.style.display = (matchText && !(hideDone && done)) ? "" : "none";
+    });
+  }
+
+  // ---- live counts (tab badge + per-tab stats) ----
+  function refreshCounts(pane) {
+    if (!pane) return;
+    const total = pane.querySelectorAll(".mission-row").length;
+    const cleared = pane.querySelectorAll('input[data-complete]:checked').length;
+    const active = pane.querySelectorAll(".mission-row:not(.inactive)").length;
+    const tabCount = document.querySelector(`.tab-btn[data-target="${pane.id}"] .tab-count`);
+    if (tabCount) tabCount.textContent = cleared + "/" + total;
+    const stats = pane.querySelector(".tab-stats");
+    if (stats) stats.textContent = `${cleared} cleared / ${total} total · ${active} active`;
+  }
+
+  document.querySelectorAll(".tab-search").forEach(input => {
+    input.addEventListener("input", () => filterPane(document.getElementById("tab-" + input.dataset.tab)));
+  });
+  document.getElementById("hide-completed").addEventListener("change", () => {
+    document.querySelectorAll(".tab-pane").forEach(filterPane);
+  });
+
+  // ---- banner ----
+  const bannerEl = document.getElementById("ajax-banner");
+  let bannerTimer = null;
+  function showBanner(text, kind) {
+    bannerEl.textContent = "> " + text;
+    bannerEl.className = "banner " + (kind === "error" ? "error" : "success");
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => bannerEl.classList.add("ajax-hidden"), 6000);
+  }
+
+  function globalStatus() { return parseInt(document.getElementById("global-status").value, 10); }
+
+  // ---- complete / reset one mission via its checkbox ----
+  // Ticking completes it (chosen status + progress filled to the clear target);
+  // unticking resets it to NOT STARTED (status 0, progress 0).
+  document.addEventListener("change", async e => {
+    const cb = e.target;
+    if (!cb.matches('input[type="checkbox"][data-complete]')) return;
+    const row = cb.closest(".mission-row");
+    if (!row || row.dataset.busy === "1") return;
+    const missionId = parseInt(row.dataset.missionId, 10);
+    const clearValue = parseInt(row.dataset.clearValue || "0", 10);
+    const checked = cb.checked;
+    const status = checked ? globalStatus() : 0;
+    const progress = checked ? clearValue : 0;
+
+    row.dataset.busy = "1";
+    try {
+      const res = await fetch(`/users/${userId}/edit/missions/set`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({mission_id: missionId, status: status, progress: progress}),
+      });
+      const json = await res.json();
+      if (!json.ok) { showBanner(json.error || "Failed.", "error"); cb.checked = !checked; return; }
+      const pane = row.closest(".tab-pane");
+      refreshCounts(pane);
+      filterPane(pane);
+      showBanner(checked ? `Mission ${missionId} completed.` : `Mission ${missionId} reset.`, "success");
+    } catch (err) {
+      showBanner("Network error: " + err.message, "error");
+      cb.checked = !checked;
+    } finally {
+      row.dataset.busy = "0";
+    }
+  });
+
+  // ---- complete a category ----
+  document.querySelectorAll("[data-complete-category]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.busy === "1") return;
+      const category = parseInt(btn.dataset.completeCategory, 10);
+      const status = globalStatus();
+      if (!confirm(`Complete every active mission in this category (status ${status})?`)) return;
+      btn.dataset.busy = "1"; btn.disabled = true; const label = btn.textContent; btn.textContent = "WORKING...";
+      try {
+        const res = await fetch(`/users/${userId}/edit/missions/complete_category`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({category: category, status: status, active_only: true}),
+        });
+        const json = await res.json();
+        if (!json.ok) { showBanner(json.error || "Failed.", "error"); return; }
+        showBanner(`Completed ${json.applied} mission(s) in ${(json.duration_ms/1000).toFixed(2)}s. Reloading...`, "success");
+        setTimeout(() => location.reload(), 700);
+      } catch (err) {
+        showBanner("Network error: " + err.message, "error");
+      } finally {
+        btn.dataset.busy = "0"; btn.disabled = false; btn.textContent = label;
+      }
+    });
+  });
+
+  // ---- complete all ----
+  document.getElementById("complete-all-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("complete-all-btn");
+    if (btn.dataset.busy === "1") return;
+    const status = globalStatus();
+    const includeEvents = document.getElementById("include-events").checked;
+    const msg = includeEvents
+      ? "Complete ALL active missions INCLUDING events (thousands of rows). Continue?"
+      : "Complete all active non-event missions. Continue?";
+    if (!confirm(msg)) return;
+    btn.dataset.busy = "1"; btn.disabled = true; const label = btn.textContent; btn.textContent = "WORKING...";
+    try {
+      const res = await fetch(`/users/${userId}/edit/missions/complete_all`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({status: status, include_events: includeEvents, active_only: true}),
+      });
+      const json = await res.json();
+      if (!json.ok) { showBanner(json.error || "Failed.", "error"); return; }
+      showBanner(`Completed ${json.applied} mission(s) in ${(json.duration_ms/1000).toFixed(2)}s. Reloading...`, "success");
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      showBanner("Network error: " + err.message, "error");
+    } finally {
+      btn.dataset.busy = "0"; btn.disabled = false; btn.textContent = label;
+    }
+  });
+
+  // ---- reset a category (untick all -> NOT STARTED) ----
+  document.querySelectorAll("[data-reset-category]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.busy === "1") return;
+      const category = parseInt(btn.dataset.resetCategory, 10);
+      if (!confirm("Reset (untick) every active mission in this category to NOT STARTED?")) return;
+      btn.dataset.busy = "1"; btn.disabled = true; const label = btn.textContent; btn.textContent = "WORKING...";
+      try {
+        const res = await fetch(`/users/${userId}/edit/missions/complete_category`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({category: category, status: 0, active_only: true}),
+        });
+        const json = await res.json();
+        if (!json.ok) { showBanner(json.error || "Failed.", "error"); return; }
+        showBanner(`Reset ${json.applied} mission(s) in ${(json.duration_ms/1000).toFixed(2)}s. Reloading...`, "success");
+        setTimeout(() => location.reload(), 700);
+      } catch (err) {
+        showBanner("Network error: " + err.message, "error");
+      } finally {
+        btn.dataset.busy = "0"; btn.disabled = false; btn.textContent = label;
+      }
+    });
+  });
+
+  // ---- reset all (untick all -> NOT STARTED) ----
+  document.getElementById("reset-all-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("reset-all-btn");
+    if (btn.dataset.busy === "1") return;
+    const includeEvents = document.getElementById("include-events").checked;
+    const msg = includeEvents
+      ? "Reset ALL active missions INCLUDING events to NOT STARTED. Continue?"
+      : "Reset all active non-event missions to NOT STARTED. Continue?";
+    if (!confirm(msg)) return;
+    btn.dataset.busy = "1"; btn.disabled = true; const label = btn.textContent; btn.textContent = "WORKING...";
+    try {
+      const res = await fetch(`/users/${userId}/edit/missions/complete_all`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({status: 0, include_events: includeEvents, active_only: true}),
+      });
+      const json = await res.json();
+      if (!json.ok) { showBanner(json.error || "Failed.", "error"); return; }
+      showBanner(`Reset ${json.applied} mission(s) in ${(json.duration_ms/1000).toFixed(2)}s. Reloading...`, "success");
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      showBanner("Network error: " + err.message, "error");
+    } finally {
+      btn.dataset.busy = "0"; btn.disabled = false; btn.textContent = label;
+    }
+  });
+})();
+</script>
+{% endblock %}

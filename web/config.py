@@ -53,6 +53,12 @@ LUNAR_TEAR_DIR: Path = _resolve_lunar_tear_dir()
 GAME_DB_PATH: Path = (LUNAR_TEAR_DIR / "server" / "db" / "game.db").resolve()
 WIZARD_CONFIG_PATH: Path = (LUNAR_TEAR_DIR / "server" / ".wizard.json").resolve()
 
+# Decoded master-data JSON shipped inside lunar-tear (assets/masterdata/*.json)
+# and the extracted mission name list (assets/names/missions.json). Used by the
+# Mission Editor to label missions and resolve categories / active windows.
+LUNAR_TEAR_MASTERDATA_DIR: Path = (LUNAR_TEAR_DIR / "server" / "assets" / "masterdata").resolve()
+MISSION_NAMES_PATH: Path = (LUNAR_TEAR_DIR / "server" / "assets" / "names" / "missions.json").resolve()
+
 DATA_DIR: Path = ROOT / "data"
 BACKUP_DIR: Path = DATA_DIR / "backups"
 MASTERDATA_DIR: Path = DATA_DIR / "masterdata"
