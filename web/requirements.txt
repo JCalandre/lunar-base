@@ -2,8 +2,11 @@ fastapi>=0.115
 uvicorn[standard]>=0.32
 jinja2>=3.1
 python-multipart>=0.0.20
-# Runtime dependency: tools/extract_names.py (imported by the name-resolution
-# services, e.g. karma_service) decompresses lunar-tear's lz4-packed asset
-# bundles. pycryptodome/msgpack are NOT needed here — those are only used by the
-# separate master-data dump step in setup.bat / setup.sh.
+# Runtime dependencies for master-data work:
+#  - lz4: tools/extract_names.py decompresses lunar-tear's lz4-packed asset
+#    bundles, and the Admin > Events editor de/recompresses master-data tables.
+#  - pycryptodome + msgpack: the Admin > Events editor (services/masterdata_bin.py)
+#    decrypts, edits, and re-encrypts the master-data bin the game server reads.
 lz4>=4.0
+pycryptodome>=3.20
+msgpack>=1.0

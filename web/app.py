@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from web import config
+from web.routes import admin as admin_routes
 from web.routes import backup as backup_routes
 from web.routes import costume_editor as costume_editor_routes
 from web.routes import item_editor as item_editor_routes
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(upgrade_manager_routes.router)
     app.include_router(memoir_editor_routes.router)
     app.include_router(mission_editor_routes.router)
+    app.include_router(admin_routes.router)
     return app
 
 

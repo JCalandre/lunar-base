@@ -13,14 +13,43 @@ from pathlib import Path
 
 ROOT: Path = Path(__file__).resolve().parent.parent
 
-# Sibling lunar-tear checkout. Defaults to ../lunar-tear; override with the
-# LUNAR_TEAR_DIR env var if your checkout lives elsewhere (e.g. a versioned
-# release folder). Everything below derives from this, so one override moves
-# the DB and the master-data lookups together.
-_LUNAR_TEAR_ENV: str | None = os.environ.get("LUNAR_TEAR_DIR")
-LUNAR_TEAR_DIR: Path = (
-    Path(_LUNAR_TEAR_ENV).resolve() if _LUNAR_TEAR_ENV else (ROOT.parent / "lunar-tear").resolve()
-)
+def _has_bin(d: Path) -> bool:
+    rel = d / "server" / "assets" / "release"
+    return rel.is_dir() and any(rel.glob("*.bin.e"))
+
+
+def _resolve_lunar_tear_dir() -> Path:
+    """Find the lunar-tear checkout that actually runs the server.
+
+    Priority: the LUNAR_TEAR_DIR env var (honored as-is, even if empty, so its
+    error is clear) > a sibling `lunar-tear/` that holds a bin > whichever
+    sibling folder holds the most recently modified master-data bin (so a
+    differently-named clone like `lt-upstream/` is picked up automatically) >
+    the plain `lunar-tear/` default for a sensible "not found" message.
+    """
+    env = os.environ.get("LUNAR_TEAR_DIR")
+    if env:
+        return Path(env).resolve()
+    default = (ROOT.parent / "lunar-tear").resolve()
+    if _has_bin(default):
+        return default
+    best: Path | None = None
+    best_mtime = -1.0
+    try:
+        for d in ROOT.parent.iterdir():
+            if not d.is_dir() or not _has_bin(d):
+                continue
+            mtime = max(p.stat().st_mtime for p in (d / "server" / "assets" / "release").glob("*.bin.e"))
+            if mtime > best_mtime:
+                best, best_mtime = d.resolve(), mtime
+    except OSError:
+        pass
+    return best or default
+
+
+# Defaults to whichever sibling checkout holds the live master-data bin (so the
+# editors patch the bin the running server reads); override with LUNAR_TEAR_DIR.
+LUNAR_TEAR_DIR: Path = _resolve_lunar_tear_dir()
 GAME_DB_PATH: Path = (LUNAR_TEAR_DIR / "server" / "db" / "game.db").resolve()
 WIZARD_CONFIG_PATH: Path = (LUNAR_TEAR_DIR / "server" / ".wizard.json").resolve()
 

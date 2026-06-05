@@ -25,6 +25,7 @@
     <a href="/upgrades" {% if active == "upgrades" %}class="active"{% endif %}>Upgrade Manager</a>
     <a href="/memoirs" {% if active == "memoirs" %}class="active"{% endif %}>Memoir Editor</a>
     <a href="/missions" {% if active == "missions" %}class="active"{% endif %}>Mission Editor</a>
+    <a href="/admin/events" {% if active == "admin" %}class="active"{% endif %}>Admin</a>
   </nav>
   <main>
     {% if message %}<div class="banner success">&gt; {{ message }}</div>{% endif %}
