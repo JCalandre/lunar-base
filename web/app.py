@@ -50,8 +50,12 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def remember_selected_user(request: Request, call_next):
-        response = await call_next(request)
         match = _user_path.match(request.url.path)
+        # The user this page is about, taken from the URL. base.html prefers
+        # this over the global lb_user cookie so each browser tab keeps its own
+        # user (open user 2 in a new tab without hijacking user 5 in another).
+        request.state.current_user_id = int(match.group(1)) if match else None
+        response = await call_next(request)
         if match:
             response.set_cookie(
                 session.COOKIE_NAME,

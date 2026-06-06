@@ -14,7 +14,10 @@
       <span>Lunar Base</span>
     </div>
     <div class="right">
-      {% set sel = request.cookies.get('lb_user') %}
+      {# Prefer the user this page is about (from the URL) over the global
+         cookie, so each browser tab keeps its own user; fall back to the last
+         selection on pages with no user context (home, the picker). #}
+      {% set sel = request.state.current_user_id or request.cookies.get('lb_user') %}
       {% if sel %}<span class="user-pill">USER #{{ sel }} &middot; <a href="/users">change</a></span>{% endif %}
       {% block bar_right %}{% endblock %}
     </div>
