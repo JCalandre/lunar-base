@@ -15,7 +15,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from web import config
+from web import config, session
 from web.services import grant_service, names_service, userdata_service
 
 router = APIRouter()
@@ -60,16 +60,19 @@ def _build_item_rows(names_category: str, owned: dict[int, int]) -> list[dict]:
 
 
 @router.get("/items", response_class=HTMLResponse)
-def item_editor_index() -> RedirectResponse:
+def item_editor_index(request: Request) -> RedirectResponse:
     """Smart entry from the global nav.
 
-    If exactly one user exists in the save, jump straight to their editor.
-    Otherwise send to the user list so the operator can pick.
+    If a user is already remembered (or exactly one user exists in the save),
+    jump straight to their editor. Otherwise send to the user list to pick.
     """
     try:
         users = userdata_service.list_users()
     except FileNotFoundError as e:
         return _redirect("/", error=str(e))
+    remembered = session.remembered_redirect(request, "/edit/items", users)
+    if remembered is not None:
+        return remembered
     if len(users) == 1:
         return RedirectResponse(url=f"/users/{users[0].user_id}/edit/items", status_code=303)
     return RedirectResponse(url="/users", status_code=303)

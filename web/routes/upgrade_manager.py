@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from web import config
+from web import config, session
 from web.services import karma_service, upgrade_service, userdata_service
 
 router = APIRouter()
@@ -59,6 +59,9 @@ def upgrade_manager_index(request: Request) -> HTMLResponse:
         users = userdata_service.list_users()
     except FileNotFoundError as e:
         return _redirect("/", error=str(e))
+    remembered = session.remembered_redirect(request, "/upgrades", users)
+    if remembered is not None:
+        return remembered
     if len(users) == 1:
         return RedirectResponse(url=f"/users/{users[0].user_id}/upgrades", status_code=303)
     return RedirectResponse(url="/users", status_code=303)

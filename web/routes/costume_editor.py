@@ -16,7 +16,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from web import config
+from web import config, session
 from web.services import costume_service, karma_service, userdata_service
 
 router = APIRouter()
@@ -34,11 +34,14 @@ def _redirect(target: str, *, message: str | None = None, error: str | None = No
 
 
 @router.get("/costumes", response_class=HTMLResponse)
-def costume_editor_index() -> RedirectResponse:
+def costume_editor_index(request: Request) -> RedirectResponse:
     try:
         users = userdata_service.list_users()
     except FileNotFoundError as e:
         return _redirect("/", error=str(e))
+    remembered = session.remembered_redirect(request, "/edit/costumes", users)
+    if remembered is not None:
+        return remembered
     if len(users) == 1:
         return RedirectResponse(url=f"/users/{users[0].user_id}/edit/costumes", status_code=303)
     return RedirectResponse(url="/users", status_code=303)

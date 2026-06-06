@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from web import config
+from web import config, session
 from web.routes import admin as admin_routes
 from web.routes import auth as auth_routes
 from web.routes import backup as backup_routes
@@ -109,6 +109,30 @@ def create_app() -> FastAPI:
     app.include_router(mission_editor_routes.router)
     app.include_router(admin_routes.router)
 
+    # Middleware registration order matters: the LAST added is the OUTERMOST.
+    # We want, from outside in: SessionMiddleware -> auth_gate -> remember.
+    # So a request that the gate forbids never reaches `remember` and cannot
+    # poison the remembered-user cookie with an off-limits id.
+
+    # Innermost: remember the last user the operator successfully opened, so the
+    # top nav can jump straight to that user's editors. Skips non-2xx responses
+    # (e.g. a "user not found" redirect) so only real selections are stored.
+    @app.middleware("http")
+    async def remember_selected_user(request: Request, call_next):
+        response = await call_next(request)
+        match = _USER_PATH.match(request.url.path)
+        if match and response.status_code < 300:
+            response.set_cookie(
+                session.COOKIE_NAME,
+                match.group(1),
+                max_age=session.COOKIE_MAX_AGE,
+                httponly=True,
+                samesite="lax",
+            )
+        return response
+
+    # Middle: access control. Anonymous -> /login; game users are scoped to
+    # their own /users/{id} record; admin-only areas stay admin-only.
     @app.middleware("http")
     async def auth_gate(request: Request, call_next):
         action, target = gate_decision(
@@ -122,7 +146,7 @@ def create_app() -> FastAPI:
             return _forbid(request)
         return await call_next(request)
 
-    # Added last -> outermost, so request.session is populated before the gate.
+    # Outermost: populate request.session before the gate reads it.
     app.add_middleware(SessionMiddleware, secret_key=config.get_session_secret(), same_site="lax")
 
     return app
