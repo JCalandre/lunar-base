@@ -15,7 +15,11 @@
     </div>
     <div class="right">{% block bar_right %}{% endblock %}</div>
   </div>
-  <nav class="primary">
+  <input type="checkbox" id="nav-toggle" class="nav-toggle">
+  <label for="nav-toggle" class="nav-burger" aria-label="Toggle navigation">
+    <span>&#9776;</span> Menu
+  </label>
+  <nav class="primary" id="primary-nav">
     <a href="/" {% if active == "home" %}class="active"{% endif %}>Status</a>
     <a href="/users" {% if active == "users" %}class="active"{% endif %}>Users</a>
     <a href="/backups" {% if active == "backups" %}class="active"{% endif %}>Save Data</a>
