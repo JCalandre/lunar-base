@@ -51,6 +51,9 @@ def _resolve_lunar_tear_dir() -> Path:
 # editors patch the bin the running server reads); override with LUNAR_TEAR_DIR.
 LUNAR_TEAR_DIR: Path = _resolve_lunar_tear_dir()
 GAME_DB_PATH: Path = (LUNAR_TEAR_DIR / "server" / "db" / "game.db").resolve()
+# lunar-tear's account database (auth_users: username + bcrypt password). Lunar
+# Base only ever reads it — game logins are verified here, never created.
+AUTH_DB_PATH: Path = (LUNAR_TEAR_DIR / "server" / "db" / "auth.db").resolve()
 WIZARD_CONFIG_PATH: Path = (LUNAR_TEAR_DIR / "server" / ".wizard.json").resolve()
 
 # Decoded master-data JSON shipped inside lunar-tear (assets/masterdata/*.json)
@@ -63,6 +66,38 @@ DATA_DIR: Path = ROOT / "data"
 BACKUP_DIR: Path = DATA_DIR / "backups"
 MASTERDATA_DIR: Path = DATA_DIR / "masterdata"
 NAMES_DIR: Path = DATA_DIR / "names"
+
+# Lunar-Base-managed auth state (never written into lunar-tear). The admin
+# account lives here, not in auth.db, so auth.db stays read-only.
+ADMIN_CONFIG_PATH: Path = DATA_DIR / "admin.json"
+_SESSION_SECRET_PATH: Path = DATA_DIR / ".session_secret"
+
+
+def get_session_secret() -> str:
+    """Secret used to sign the login session cookie.
+
+    Honors LUNAR_BASE_SECRET; otherwise persists a generated secret under
+    data/ so sessions survive a restart. Falls back to an ephemeral secret
+    (sessions reset on restart) if data/ is not writable.
+    """
+    env = os.environ.get("LUNAR_BASE_SECRET")
+    if env:
+        return env
+    try:
+        if _SESSION_SECRET_PATH.exists():
+            text = _SESSION_SECRET_PATH.read_text(encoding="utf-8").strip()
+            if text:
+                return text
+        import secrets
+
+        token = secrets.token_urlsafe(48)
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        _SESSION_SECRET_PATH.write_text(token, encoding="utf-8")
+        return token
+    except OSError:
+        import secrets
+
+        return secrets.token_urlsafe(48)
 
 # Go produces a `.exe` on Windows and an extensionless binary elsewhere. The
 # setup scripts build whichever is appropriate for the host, so resolve the
