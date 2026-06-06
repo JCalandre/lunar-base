@@ -13,18 +13,25 @@
       <span>Bunker Terminal</span>
       <span>Lunar Base</span>
     </div>
-    <div class="right">{% block bar_right %}{% endblock %}</div>
+    <div class="right">
+      {% set sel = request.cookies.get('lb_user') %}
+      {% if sel %}<span class="user-pill">USER #{{ sel }} &middot; <a href="/users">change</a></span>{% endif %}
+      {% block bar_right %}{% endblock %}
+    </div>
   </div>
+  {# When a user is remembered, point the editor menus straight at that user so
+     switching menus never re-prompts for a user. Falls back to the picker
+     entry points (/items, ...) when no user is selected yet. #}
   <nav class="primary">
     <a href="/" {% if active == "home" %}class="active"{% endif %}>Status</a>
     <a href="/users" {% if active == "users" %}class="active"{% endif %}>Users</a>
     <a href="/backups" {% if active == "backups" %}class="active"{% endif %}>Save Data</a>
-    <a href="/items" {% if active == "items" %}class="active"{% endif %}>Item Editor</a>
-    <a href="/costumes" {% if active == "costumes" %}class="active"{% endif %}>Costume Editor</a>
-    <a href="/weapons" {% if active == "weapons" %}class="active"{% endif %}>Weapon Editor</a>
-    <a href="/upgrades" {% if active == "upgrades" %}class="active"{% endif %}>Upgrade Manager</a>
-    <a href="/memoirs" {% if active == "memoirs" %}class="active"{% endif %}>Memoir Editor</a>
-    <a href="/missions" {% if active == "missions" %}class="active"{% endif %}>Mission Editor</a>
+    <a href="{{ '/users/' ~ sel ~ '/edit/items' if sel else '/items' }}" {% if active == "items" %}class="active"{% endif %}>Item Editor</a>
+    <a href="{{ '/users/' ~ sel ~ '/edit/costumes' if sel else '/costumes' }}" {% if active == "costumes" %}class="active"{% endif %}>Costume Editor</a>
+    <a href="{{ '/users/' ~ sel ~ '/edit/weapons' if sel else '/weapons' }}" {% if active == "weapons" %}class="active"{% endif %}>Weapon Editor</a>
+    <a href="{{ '/users/' ~ sel ~ '/upgrades' if sel else '/upgrades' }}" {% if active == "upgrades" %}class="active"{% endif %}>Upgrade Manager</a>
+    <a href="{{ '/users/' ~ sel ~ '/memoirs' if sel else '/memoirs' }}" {% if active == "memoirs" %}class="active"{% endif %}>Memoir Editor</a>
+    <a href="{{ '/users/' ~ sel ~ '/edit/missions' if sel else '/missions' }}" {% if active == "missions" %}class="active"{% endif %}>Mission Editor</a>
     <a href="/admin/events" {% if active == "admin" %}class="active"{% endif %}>Admin</a>
   </nav>
   <main>

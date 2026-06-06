@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from web import config
+from web import config, session
 from web.services import backup_service, mission_service, userdata_service
 
 router = APIRouter()
@@ -48,11 +48,14 @@ def _err(message: str, status: int = 400) -> JSONResponse:
 
 
 @router.get("/missions", response_class=HTMLResponse)
-def mission_editor_index() -> RedirectResponse:
+def mission_editor_index(request: Request) -> RedirectResponse:
     try:
         users = userdata_service.list_users()
     except FileNotFoundError as e:
         return RedirectResponse(url=f"/?error={e}", status_code=303)
+    remembered = session.remembered_redirect(request, "/edit/missions", users)
+    if remembered is not None:
+        return remembered
     if len(users) == 1:
         return RedirectResponse(url=f"/users/{users[0].user_id}/edit/missions", status_code=303)
     return RedirectResponse(url="/users", status_code=303)

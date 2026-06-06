@@ -67,7 +67,10 @@ body::before {
   gap: 24px;
 }
 .terminal-bar .left { display: flex; gap: 24px; }
-.terminal-bar .right { color: var(--bg-cream-dark); }
+.terminal-bar .right { color: var(--bg-cream-dark); display: flex; gap: 16px; align-items: center; }
+.terminal-bar .right .user-pill { color: var(--bg-cream); }
+.terminal-bar .right .user-pill a { color: var(--bg-cream-dark); border-bottom: 1px dotted var(--bg-cream-dark); }
+.terminal-bar .right .user-pill a:hover { background: var(--bg-cream); color: var(--accent); }
 
 /* Primary nav */
 nav.primary {

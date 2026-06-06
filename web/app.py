@@ -9,10 +9,12 @@ LUNAR_BASE_HOST and LUNAR_BASE_PORT environment variables)
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+import re
+
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from web import config
+from web import config, session
 from web.routes import admin as admin_routes
 from web.routes import backup as backup_routes
 from web.routes import costume_editor as costume_editor_routes
@@ -40,6 +42,26 @@ def create_app() -> FastAPI:
     app.include_router(memoir_editor_routes.router)
     app.include_router(mission_editor_routes.router)
     app.include_router(admin_routes.router)
+
+    # Remember the last user the operator opened. Any request whose path starts
+    # /users/{id} records that id in a cookie so the top nav can jump straight
+    # to that user's editors instead of re-prompting on every menu.
+    _user_path = re.compile(r"^/users/(\d+)(?:/|$)")
+
+    @app.middleware("http")
+    async def remember_selected_user(request: Request, call_next):
+        response = await call_next(request)
+        match = _user_path.match(request.url.path)
+        if match:
+            response.set_cookie(
+                session.COOKIE_NAME,
+                match.group(1),
+                max_age=session.COOKIE_MAX_AGE,
+                httponly=True,
+                samesite="lax",
+            )
+        return response
+
     return app
 
 
