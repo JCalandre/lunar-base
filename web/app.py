@@ -133,8 +133,21 @@ def create_app() -> FastAPI:
 
     # Middle: access control. Anonymous -> /login; game users are scoped to
     # their own /users/{id} record; admin-only areas stay admin-only.
+    # Disabled by default: when --auth / LUNAR_BASE_AUTH is not set the gate is
+    # a no-op and every record is fully accessible (original behaviour).
     @app.middleware("http")
     async def auth_gate(request: Request, call_next):
+        enabled = config.auth_enabled()
+        # Exposed to templates so base.html can show the right nav (full nav +
+        # no login pill when auth is off).
+        request.state.auth_enabled = enabled
+        # The user this page is *about*, taken from the URL. base.html prefers
+        # this over the global lb_user cookie so each tab stays on its own user
+        # (open user 2 in a new tab without hijacking user 5 in another tab).
+        m = _USER_PATH.match(request.url.path)
+        request.state.current_user_id = int(m.group(1)) if m else None
+        if not enabled:
+            return await call_next(request)
         action, target = gate_decision(
             request.url.path,
             request.session.get("role"),
