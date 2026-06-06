@@ -20,8 +20,8 @@ templates = Jinja2Templates(directory=str(config.ROOT / "web" / "templates"))
 
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, error: str | None = None):
-    # Already logged in? Send them on.
-    if request.session.get("role"):
+    # Login disabled (open mode) or already logged in? Send them on.
+    if not config.auth_enabled() or request.session.get("role"):
         return RedirectResponse(url="/", status_code=303)
     return templates.TemplateResponse(
         request,

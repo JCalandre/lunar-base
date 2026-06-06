@@ -72,6 +72,21 @@ NAMES_DIR: Path = DATA_DIR / "names"
 ADMIN_CONFIG_PATH: Path = DATA_DIR / "admin.json"
 _SESSION_SECRET_PATH: Path = DATA_DIR / ".session_secret"
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def auth_enabled() -> bool:
+    """Whether login + per-user restriction is active.
+
+    Off by default — Lunar Base then behaves like the original tool (no login,
+    full access to every record). Turn it on at launch with the ``--auth`` flag
+    (``python -m web --auth``) or by setting ``LUNAR_BASE_AUTH=1``.
+
+    Read live (not cached) so the launch flag can set the env var before the
+    first request without import-order surprises.
+    """
+    return os.environ.get("LUNAR_BASE_AUTH", "").strip().lower() in _TRUTHY
+
 
 def get_session_secret() -> str:
     """Secret used to sign the login session cookie.

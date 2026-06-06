@@ -109,8 +109,16 @@ def create_app() -> FastAPI:
     app.include_router(mission_editor_routes.router)
     app.include_router(admin_routes.router)
 
+    # Disabled by default: when --auth / LUNAR_BASE_AUTH is not set the gate is
+    # a no-op and every record is fully accessible (original behaviour).
     @app.middleware("http")
     async def auth_gate(request: Request, call_next):
+        enabled = config.auth_enabled()
+        # Exposed to templates so base.html can show the right nav (full nav +
+        # no login pill when auth is off).
+        request.state.auth_enabled = enabled
+        if not enabled:
+            return await call_next(request)
         action, target = gate_decision(
             request.url.path,
             request.session.get("role"),

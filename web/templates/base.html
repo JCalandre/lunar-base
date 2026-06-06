@@ -14,12 +14,14 @@
       <span>Lunar Base</span>
     </div>
     <div class="right">
-      {% set role = request.session.get('role') %}
-      {% if role %}<span class="user-pill">{{ request.session.get('username') }}{% if role == 'admin' %} (admin){% endif %} &middot; <a href="/logout">logout</a></span>{% endif %}
+      {# auth_enabled is set per-request by the gate in web/app.py. When auth is
+         off, act as a full-access admin with no login/logout controls. #}
+      {% set auth_on = request.state.auth_enabled %}
+      {% set role = request.session.get('role') if auth_on else 'admin' %}
+      {% if auth_on and role %}<span class="user-pill">{{ request.session.get('username') }}{% if role == 'admin' %} (admin){% endif %} &middot; <a href="/logout">logout</a></span>{% endif %}
       {% block bar_right %}{% endblock %}
     </div>
   </div>
-  {% set role = request.session.get('role') %}
   {% if role %}
   <nav class="primary">
     <a href="/" {% if active == "home" %}class="active"{% endif %}>Status</a>
