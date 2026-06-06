@@ -63,8 +63,28 @@ By default Lunar Base **auto-detects this PC's LAN IP** and binds to it, so the 
 
 > On Windows, the first launch may pop a Firewall prompt — allow Python on **Private** networks only.
 
-> [!WARNING]
-> Lunar Base has **no authentication**. Because it is reachable over the network, **anyone who can reach this PC on the network can open the page and edit the game database** (grants, restores, mass upgrades). Only run it on a network you trust, never on public/shared Wi-Fi.
+> [!IMPORTANT]
+> Lunar Base requires a **login**. Game accounts sign in with their username and
+> password (verified against lunar-tear's `auth.db`, read-only) and can only see
+> and edit **their own** record. An **admin** account can reach every record.
+> Still only run it on a network you trust — admin holds full edit rights.
+
+### Authentication & the admin account
+
+Lunar Base reads game logins from lunar-tear's `..\lunar-tear\server\db\auth.db`
+(it never writes to it). Each game account is scoped to the single game record
+bound to it (`game.db users.facebook_id == auth_users.id`).
+
+The admin account is **local to Lunar Base** (stored hashed in `data\admin.json`,
+gitignored) and is **never** written into `auth.db`. Create or reset it with:
+
+```bat
+.venv\Scripts\python.exe tools\set_admin_password.py
+```
+
+Until an admin is configured, the login page shows a reminder and only game
+accounts can sign in. The session secret is taken from `LUNAR_BASE_SECRET`, or a
+random one is generated and persisted to `data\.session_secret`.
 
 ### Changing the bind address / port
 
