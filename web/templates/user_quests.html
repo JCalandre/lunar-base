@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Quest Editor :: User {{ user_id }} :: Lunar Base{% endblock %}
+{% block bar_right %}USER {{ user_id }} :: QUESTS{% endblock %}
+
+{% macro chapter_block(chapter) %}
+<details class="panel quest-chapter" data-chapter style="margin-bottom:8px">
+  <summary style="cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;letter-spacing:0.08em">
+    <span class="grant-name">{{ chapter.name }}</span>
+    {% if chapter.subtitle %}<span class="grant-id">{{ chapter.subtitle }}</span>{% endif %}
+    <span class="group-stats" style="margin-left:auto">{{ chapter.cleared_count }}/{{ chapter.total_count }}</span>
+  </summary>
+  {% for tier in chapter.tiers %}
+  <div class="quest-tier" style="margin-top:6px">
+    <div class="quest-tier-head" style="display:flex;align-items:center;gap:8px;padding:2px 0;border-bottom:1px dashed var(--fg-mid)">
+      <label class="row-checkbox" style="font-size:11px">
+        <input type="checkbox" data-tier-select>
+        <span>all</span>
+      </label>
+      <span class="grant-id">{{ tier.label or "Quests" }}</span>
+    </div>
+    {% for q in tier.quests %}
+    <label class="grant-form quest {% if q.cleared %}owned{% endif %}"
+           data-quest-id="{{ q.quest_id }}"
+           data-name="{{ q.name|lower }} {{ q.quest_id }}"
+           style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" data-quest-select {% if q.cleared %}disabled{% endif %}>
+      <span class="grant-name">{{ q.name }}</span>
+      <span class="grant-id">ID {{ q.quest_id }}</span>
+      <span class="grant-current" style="margin-left:auto">
+        {% if q.cleared %}
+          <span class="status-pill online">CLEARED</span>
+        {% else %}
+          <span class="status-pill offline">OPEN</span>
+        {% endif %}
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</details>
+{% endmacro %}
+
+{% block content %}
+<style>
+  .qtabs, .qsubtabs { display:flex; flex-wrap:wrap; gap:4px; margin:10px 0; }
+  .qsubtabs { border-top:1px solid var(--fg-mid); padding-top:8px; margin-top:0 }
+  .qtab, .qsubtab {
+    background:var(--bg-deep); color:var(--fg-mid); border:1px solid var(--fg-mid);
+    padding:6px 12px; cursor:pointer; font-family:inherit; font-size:12px; letter-spacing:0.08em;
+  }
+  .qsubtab { font-size:11px; padding:4px 9px; }
+  .qtab.active, .qsubtab.active { background:var(--fg); color:var(--bg-deep); }
+  .qtab .group-stats, .qsubtab .group-stats { margin-left:6px }
+  .qpanel[hidden], .qsubpanel[hidden] { display:none }
+</style>
+
+<p style="margin-top:0">
+  <a href="/users/{{ user_id }}">&larr; Back to user {{ user_id }}{% if user_name %} ({{ user_name }}){% endif %}</a>
+</p>
+
+<h1 class="bracket-header">Quest Editor</h1>
+
+<div class="panel panel-corners">
+  <p style="margin:0 0 8px;color:var(--fg-mid);font-size:12px;letter-spacing:0.1em">
+    Tick quests and press CLEAR CHOSEN. Each clear replays lunar-tear's real finish &mdash; it grants
+    the first-clear, mission and drop rewards, marks the quest cleared, unlocks the next quest/difficulty,
+    and records its side-story scenario, exactly like playing it. Already-cleared quests are skipped.
+    A backup is taken automatically before every change.
+  </p>
+  <p class="warning-text" style="margin:8px 0 0">
+    Main-story quests should be cleared <strong>in order</strong>. Skipping a quest's predecessors can
+    leave your story progress inconsistent (the next chapter may not open correctly). Events are
+    self-contained &mdash; tick the lower difficulty before the higher one so the unlock cascades.
+  </p>
+</div>
+
+<div id="ajax-banner" class="banner ajax-hidden" role="status" aria-live="polite"></div>
+
+<div class="search-row">
+  <label for="search-quests" class="search-label">FILTER</label>
+  <input type="text" id="search-quests" class="costume-search"
+         placeholder="Search by quest name or id...">
+  <span class="tab-stats">{{ cleared_count }} cleared / {{ total_count }} total</span>
+  <button type="button" class="grant-chosen-btn" id="clear-chosen-btn">CLEAR CHOSEN (<span id="chosen-count">0</span>)</button>
+</div>
+
+{% set main_cleared = main_chapters|sum(attribute='cleared_count') %}
+{% set main_total = main_chapters|sum(attribute='total_count') %}
+<div class="qtabs">
+  <button type="button" class="qtab active" data-tab="main">Main Story <span class="group-stats">{{ main_cleared }}/{{ main_total }}</span></button>
+  <button type="button" class="qtab" data-tab="events">Events</button>
+</div>
+
+<div class="qpanel" data-panel="main">
+  {% for chapter in main_chapters %}{{ chapter_block(chapter) }}{% endfor %}
+</div>
+
+<div class="qpanel" data-panel="events" hidden>
+  <div class="qsubtabs">
+    {% for g in event_groups %}
+    <button type="button" class="qsubtab {% if loop.first %}active{% endif %}" data-subtab="{{ g.key }}">{{ g.label }} <span class="group-stats">{{ g.cleared }}/{{ g.total }}</span></button>
+    {% endfor %}
+  </div>
+  {% for g in event_groups %}
+  <div class="qsubpanel" data-subpanel="{{ g.key }}" {% if not loop.first %}hidden{% endif %}>
+    {% for chapter in g.chapters %}{{ chapter_block(chapter) }}{% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function() {
+  const userId = {{ user_id }};
+
+  // ---------------- Tabs / sub-tabs ----------------
+  document.querySelectorAll(".qtab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".qtab").forEach(b => b.classList.toggle("active", b === btn));
+      const name = btn.dataset.tab;
+      document.querySelectorAll(".qpanel").forEach(p => { p.hidden = p.dataset.panel !== name; });
+    });
+  });
+  document.querySelectorAll(".qsubtab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".qsubtab").forEach(b => b.classList.toggle("active", b === btn));
+      const name = btn.dataset.subtab;
+      document.querySelectorAll(".qsubpanel").forEach(p => { p.hidden = p.dataset.subpanel !== name; });
+    });
+  });
+
+  // ---------------- Banner ----------------
+  const bannerEl = document.getElementById("ajax-banner");
+  let bannerTimer = null;
+  function showBanner(text, kind) {
+    bannerEl.textContent = "> " + text;
+    bannerEl.className = "banner " + (kind === "error" ? "error" : "success");
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => bannerEl.classList.add("ajax-hidden"), 8000);
+  }
+
+  function selectableBoxes() {
+    return document.querySelectorAll(".grant-form.quest:not(.owned) input[data-quest-select]:not(:disabled)");
+  }
+  function updateChosenCount() {
+    let n = 0;
+    selectableBoxes().forEach(cb => { if (cb.checked) n++; });
+    document.getElementById("chosen-count").textContent = n;
+  }
+
+  // Tier "all" toggles every uncleared, currently-visible quest in that tier.
+  document.addEventListener("change", e => {
+    if (e.target.matches("input[data-tier-select]")) {
+      const tier = e.target.closest(".quest-tier");
+      tier.querySelectorAll(".grant-form.quest:not(.owned) input[data-quest-select]:not(:disabled)")
+        .forEach(cb => {
+          if (cb.closest(".grant-form").style.display !== "none") cb.checked = e.target.checked;
+        });
+      updateChosenCount();
+    } else if (e.target.matches("input[data-quest-select]")) {
+      updateChosenCount();
+    }
+  });
+
+  // Search: filter rows by name/id, auto-open chapters that contain matches.
+  const searchInput = document.getElementById("search-quests");
+  searchInput.addEventListener("input", () => {
+    const q = searchInput.value.trim().toLowerCase();
+    document.querySelectorAll("details[data-chapter]").forEach(ch => {
+      let anyVisible = false;
+      ch.querySelectorAll(".grant-form.quest").forEach(row => {
+        const match = !q || (row.dataset.name || "").includes(q);
+        row.style.display = match ? "" : "none";
+        if (match) anyVisible = true;
+      });
+      ch.style.display = anyVisible ? "" : "none";
+      if (q) ch.open = anyVisible;
+    });
+  });
+
+  // CLEAR CHOSEN (collects ticks across every tab).
+  document.getElementById("clear-chosen-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("clear-chosen-btn");
+    if (btn.dataset.busy === "1") return;
+
+    const ids = [];
+    selectableBoxes().forEach(cb => {
+      if (cb.checked) ids.push(parseInt(cb.closest(".grant-form").dataset.questId, 10));
+    });
+    if (ids.length === 0) { showBanner("Nothing chosen.", "error"); return; }
+    if (!confirm(
+      `Clear ${ids.length} quest(s)? A backup is taken first.\n\n` +
+      `Reminder: for main-story quests, make sure you've ticked the earlier quests too ` +
+      `— clearing out of order can leave the story pointer inconsistent.`
+    )) return;
+
+    btn.dataset.busy = "1";
+    btn.disabled = true;
+    const original = btn.innerHTML;
+    btn.textContent = "WORKING...";
+    try {
+      const res = await fetch(`/users/${userId}/edit/quests/clear`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({quest_ids: ids}),
+      });
+      const json = await res.json();
+      if (!json.ok) { showBanner(json.error || "Clear failed.", "error"); return; }
+      showBanner(`Cleared ${json.applied} quest(s) in ${(json.duration_ms / 1000).toFixed(2)}s. Reloading…`, "success");
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) {
+      showBanner("Network error: " + err.message, "error");
+      btn.dataset.busy = "0";
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  });
+
+  updateChosenCount();
+})();
+</script>
+{% endblock %}

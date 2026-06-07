@@ -46,6 +46,7 @@
     <a href="{{ '/users/' ~ sel ~ '/upgrades' if sel else '/upgrades' }}" {% if active == "upgrades" %}class="active"{% endif %}>Upgrade Manager</a>
     <a href="{{ '/users/' ~ sel ~ '/memoirs' if sel else '/memoirs' }}" {% if active == "memoirs" %}class="active"{% endif %}>Memoir Editor</a>
     <a href="{{ '/users/' ~ sel ~ '/edit/missions' if sel else '/missions' }}" {% if active == "missions" %}class="active"{% endif %}>Mission Editor</a>
+    <a href="{{ '/users/' ~ sel ~ '/edit/quests' if sel else '/quests' }}" {% if active == "quests" %}class="active"{% endif %}>Quest Editor</a>
     {% if role == 'admin' %}<a href="/admin/events" {% if active == "admin" %}class="active"{% endif %}>Admin</a>{% endif %}
   </nav>
   {% endif %}

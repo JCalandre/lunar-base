@@ -170,13 +170,18 @@ type request struct {
 	Memoirs          []memoirGrantSpec      `json:"memoirs"`
 	MemoirSlots      []memoirSlotsSpec      `json:"memoir_slots"`
 	ContentsStoryIDs []int32                `json:"contents_story_ids"`
+	QuestIDs         []int32                `json:"quest_ids"`
 }
 
 type response struct {
-	OK      bool   `json:"ok"`
-	Error   string `json:"error,omitempty"`
-	Applied int    `json:"applied,omitempty"`
+	OK      bool        `json:"ok"`
+	Error   string      `json:"error,omitempty"`
+	Applied int         `json:"applied,omitempty"`
+	Quests  []questInfo `json:"quests,omitempty"`
 }
+
+// queryQuests is set by read-only list actions (list_quests) and emitted by main.
+var queryQuests []questInfo
 
 func openDB(path string) (interface {
 	Close() error
@@ -356,6 +361,10 @@ func run() (int, error) {
 		return runSetMemoirSubsBatch(&req)
 	case "mark_contents_stories_played":
 		return runMarkContentsStoriesPlayed(&req)
+	case "list_quests":
+		return runListQuests(&req)
+	case "clear_quests":
+		return runClearQuests(&req)
 	case "":
 		return 0, errors.New("action required")
 	default:
@@ -370,5 +379,5 @@ func main() {
 		_ = enc.Encode(response{OK: false, Error: err.Error()})
 		os.Exit(1)
 	}
-	_ = enc.Encode(response{OK: true, Applied: applied})
+	_ = enc.Encode(response{OK: true, Applied: applied, Quests: queryQuests})
 }
