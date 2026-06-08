@@ -111,3 +111,32 @@ def clear_quests_endpoint(user_id: int, payload: dict[str, Any] = Body(...)) -> 
         return _err(f"Backup failed: {e}", status=500)
 
     return _ok(outcome.applied, outcome.duration_ms)
+
+
+@router.post("/users/{user_id}/edit/quests/redo")
+def redo_quests_endpoint(user_id: int, payload: dict[str, Any] = Body(...)) -> JSONResponse:
+    """Re-run already-cleared quests `repeat` times each to farm repeatable
+    rewards. No first-clear loot is re-awarded -- the game's finish logic gates
+    it on prior clear state."""
+    raw = payload.get("quest_ids")
+    if not isinstance(raw, list) or not raw:
+        return _err("quest_ids must be a non-empty list")
+    try:
+        quest_ids = [int(q) for q in raw]
+    except (TypeError, ValueError):
+        return _err("quest_ids must be integers")
+    try:
+        repeat = int(payload.get("repeat", 1))
+    except (TypeError, ValueError):
+        return _err("repeat must be an integer")
+    if repeat < 1:
+        return _err("repeat must be at least 1")
+
+    try:
+        outcome = quest_service.clear_quests(user_id, quest_ids, redo=True, repeat=repeat)
+    except quest_service.QuestError as e:
+        return _err(str(e))
+    except FileNotFoundError as e:
+        return _err(f"Backup failed: {e}", status=500)
+
+    return _ok(outcome.applied, outcome.duration_ms)

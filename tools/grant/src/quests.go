@@ -224,6 +224,17 @@ func runClearQuests(req *request) (int, error) {
 		return si < sj
 	})
 
+	// Redo mode (Quest Editor REDO) re-finishes already-cleared quests to farm
+	// their repeatable drop/mission rewards. Repeat is how many finishes to run
+	// per quest; clamped so a runaway request can't loop forever.
+	repeat := int(req.Repeat)
+	if repeat < 1 {
+		repeat = 1
+	}
+	if repeat > 1000 {
+		repeat = 1000
+	}
+
 	now := time.Now().UnixMilli()
 	applied := 0
 	_, err = st.UpdateUser(req.UserID, func(u *store.UserState) {
@@ -232,27 +243,39 @@ func runClearQuests(req *request) (int, error) {
 			if _, ok := env.catalog.QuestById[questId]; !ok {
 				continue // unknown id
 			}
-			if u.Quests[questId].QuestStateType == model.UserQuestStateTypeCleared {
-				continue // already cleared -- skip so drops are not re-rolled
+			alreadyCleared := u.Quests[questId].QuestStateType == model.UserQuestStateTypeCleared
+			if alreadyCleared && !req.Redo {
+				continue // first-clear mode: skip cleared so drops are not re-rolled
 			}
-			func() {
-				// One quest's failure must not abort the rest of the batch.
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("[clear_quests] quest %d failed: %v", questId, r)
+			// First-clear mode runs each quest once. Redo mode runs it `repeat`
+			// times to farm the repeatable rewards. Re-finishing a quest the game
+			// already marks cleared yields only its repeatable drop/mission
+			// rewards -- the finish handler gates the one-time first-clear bonus
+			// on prior state -- so a redo never re-awards first-clear loot.
+			times := 1
+			if req.Redo {
+				times = repeat
+			}
+			for i := 0; i < times; i++ {
+				func() {
+					// One quest's failure must not abort the rest of the batch.
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[clear_quests] quest %d failed: %v", questId, r)
+						}
+					}()
+					env.ensureQuestState(u, questId)
+					// Event quests are exactly those resolvable to an event chapter;
+					// everything else (all main-story quests, incl. non-sequence
+					// ones) goes through the main finish.
+					if chapterId, isEvent := env.eventChapter[questId]; isEvent {
+						env.handler.HandleEventQuestFinish(u, chapterId, questId, false, false, now)
+					} else {
+						env.handler.HandleQuestFinish(u, questId, false, false, now)
 					}
+					applied++
 				}()
-				env.ensureQuestState(u, questId)
-				// Event quests are exactly those resolvable to an event chapter;
-				// everything else (all main-story quests, incl. non-sequence
-				// ones) goes through the main finish.
-				if chapterId, isEvent := env.eventChapter[questId]; isEvent {
-					env.handler.HandleEventQuestFinish(u, chapterId, questId, false, false, now)
-				} else {
-					env.handler.HandleQuestFinish(u, questId, false, false, now)
-				}
-				applied++
-			}()
+			}
 		}
 	})
 	if err != nil {

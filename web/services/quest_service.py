@@ -304,13 +304,30 @@ def _invoke_shim(payload: dict) -> dict:
     return result
 
 
-def clear_quests(user_id: int, quest_ids: list[int]) -> WriteOutcome:
+# Upper bound on REDO farm loops per quest; mirrors the shim's own clamp.
+MAX_REPEAT: Final[int] = 1000
+
+
+def clear_quests(
+    user_id: int,
+    quest_ids: list[int],
+    *,
+    redo: bool = False,
+    repeat: int = 1,
+) -> WriteOutcome:
     """Faithfully clear the given quest_ids via the Go shim (one backup + one
-    transaction). Already-cleared quests are skipped server-side."""
+    transaction).
+
+    Default (first-clear) mode skips already-cleared quests server-side so their
+    one-time rewards and drops are never re-rolled. In ``redo`` mode the shim
+    re-runs each chosen quest's finish ``repeat`` times instead of skipping it,
+    farming the repeatable drop/mission rewards (the first-clear bonus is gated
+    by the game's own finish logic, so a redo never re-awards it)."""
     if user_id <= 0:
         raise QuestError("user_id must be positive")
     if not quest_ids:
         return WriteOutcome(applied=0, duration_ms=0)
+    repeat = max(1, min(int(repeat), MAX_REPEAT))
 
     _ensure_shim_available()
     bin_path = _ensure_master_data()
@@ -322,6 +339,8 @@ def clear_quests(user_id: int, quest_ids: list[int]) -> WriteOutcome:
         "master_data_path": bin_path,
         "user_id": user_id,
         "quest_ids": [int(q) for q in quest_ids],
+        "redo": bool(redo),
+        "repeat": repeat,
     })
     duration_ms = int((time.monotonic() - started) * 1000)
     return WriteOutcome(applied=int(result.get("applied", 0)), duration_ms=duration_ms)
