@@ -68,9 +68,10 @@
     A backup is taken automatically before every change.
   </p>
   <p style="margin:8px 0 0;color:var(--fg-mid);font-size:12px;letter-spacing:0.1em">
-    Already-cleared quests can be re-run for farming: tick them and press REDO &times;N. Each redo
-    replays the finish N times, granting only the <strong>repeatable</strong> drop/mission rewards
-    &mdash; the one-time first-clear bonus is never re-awarded.
+    Already-cleared quests can be farmed: tick them and press REDO &times;N. This runs the game's own
+    multi-skip N times &mdash; granting drops, gold and EXP per run &mdash; with no first-clear bonus
+    and <strong>no stamina or skip-ticket cost</strong>. (Events have no skip in the engine, so they
+    replay the finish instead.)
   </p>
   <p class="warning-text" style="margin:8px 0 0">
     Main-story quests should be cleared <strong>in order</strong>. Skipping a quest's predecessors can
@@ -245,8 +246,8 @@
     if (!Number.isFinite(times) || times < 1) times = 1;
     if (times > 1000) times = 1000;
     if (!confirm(
-      `Redo ${ids.length} cleared quest(s) ${times}× each (${ids.length * times} finishes)?\n\n` +
-      `Only repeatable drop/mission rewards are granted — no first-clear bonus. A backup is taken first.`
+      `Skip ${ids.length} cleared quest(s) ${times}× each (${ids.length * times} runs)?\n\n` +
+      `Grants drops, gold and EXP per run — no first-clear bonus, no stamina/ticket cost. A backup is taken first.`
     )) return;
     runAction(document.getElementById("redo-chosen-btn"),
       `/users/${userId}/edit/quests/redo`, {quest_ids: ids, repeat: times}, "Redid");

@@ -224,9 +224,10 @@ func runClearQuests(req *request) (int, error) {
 		return si < sj
 	})
 
-	// Redo mode (Quest Editor REDO) re-finishes already-cleared quests to farm
-	// their repeatable drop/mission rewards. Repeat is how many finishes to run
-	// per quest; clamped so a runaway request can't loop forever.
+	// Redo mode (Quest Editor REDO) is the in-game multi-skip: it re-runs an
+	// already-cleared quest `repeat` times to farm its repeatable rewards.
+	// Repeat is clamped so a runaway request can't loop forever (the game caps
+	// skip at 100; we allow a little more headroom).
 	repeat := int(req.Repeat)
 	if repeat < 1 {
 		repeat = 1
@@ -234,6 +235,7 @@ func runClearQuests(req *request) (int, error) {
 	if repeat > 1000 {
 		repeat = 1000
 	}
+	skipTicketId := env.handler.Config.ConsumableItemIdForQuestSkipTicket
 
 	now := time.Now().UnixMilli()
 	applied := 0
@@ -243,39 +245,67 @@ func runClearQuests(req *request) (int, error) {
 			if _, ok := env.catalog.QuestById[questId]; !ok {
 				continue // unknown id
 			}
-			alreadyCleared := u.Quests[questId].QuestStateType == model.UserQuestStateTypeCleared
-			if alreadyCleared && !req.Redo {
-				continue // first-clear mode: skip cleared so drops are not re-rolled
-			}
-			// First-clear mode runs each quest once. Redo mode runs it `repeat`
-			// times to farm the repeatable rewards. Re-finishing a quest the game
-			// already marks cleared yields only its repeatable drop/mission
-			// rewards -- the finish handler gates the one-time first-clear bonus
-			// on prior state -- so a redo never re-awards first-clear loot.
-			times := 1
+			chapterId, isEvent := env.eventChapter[questId]
+
 			if req.Redo {
-				times = repeat
-			}
-			for i := 0; i < times; i++ {
+				// REDO == faithful in-game multi-skip. Main/other quests go
+				// through lunar-tear's real HandleQuestSkip: drops + gold + EXP
+				// per run, clear counters bumped, no first-clear bonus, no mission
+				// rewards, and -- crucially -- the story/scene pointer left
+				// untouched (the quest-finish path would advance it). lunar-tear
+				// has no event-quest skip handler, so event quests fall back to
+				// replaying the event finish `repeat` times.
 				func() {
 					// One quest's failure must not abort the rest of the batch.
 					defer func() {
 						if r := recover(); r != nil {
-							log.Printf("[clear_quests] quest %d failed: %v", questId, r)
+							log.Printf("[clear_quests] redo quest %d failed: %v", questId, r)
 						}
 					}()
-					env.ensureQuestState(u, questId)
-					// Event quests are exactly those resolvable to an event chapter;
-					// everything else (all main-story quests, incl. non-sequence
-					// ones) goes through the main finish.
-					if chapterId, isEvent := env.eventChapter[questId]; isEvent {
-						env.handler.HandleEventQuestFinish(u, chapterId, questId, false, false, now)
-					} else {
-						env.handler.HandleQuestFinish(u, questId, false, false, now)
+					if isEvent {
+						for i := 0; i < repeat; i++ {
+							env.ensureQuestState(u, questId)
+							env.handler.HandleEventQuestFinish(u, chapterId, questId, false, false, now)
+							applied++
+						}
+						return
 					}
-					applied++
+					// Cost-bypass: HandleQuestSkip spends stamina + skip tickets,
+					// but lunar-base farming should not be gated by either.
+					// Snapshot both, run the skip, then restore them.
+					staminaBefore := u.Status.StaminaMilliValue
+					ticketsBefore := u.ConsumableItems[skipTicketId]
+					env.handler.HandleQuestSkip(u, questId, int32(repeat), now)
+					u.Status.StaminaMilliValue = staminaBefore
+					u.ConsumableItems[skipTicketId] = ticketsBefore
+					applied += repeat
 				}()
+				continue
 			}
+
+			// First-clear mode: skip already-cleared quests so their one-time
+			// rewards and drops are never re-rolled; clear the rest exactly once.
+			if u.Quests[questId].QuestStateType == model.UserQuestStateTypeCleared {
+				continue
+			}
+			func() {
+				// One quest's failure must not abort the rest of the batch.
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[clear_quests] quest %d failed: %v", questId, r)
+					}
+				}()
+				env.ensureQuestState(u, questId)
+				// Event quests are exactly those resolvable to an event chapter;
+				// everything else (all main-story quests, incl. non-sequence
+				// ones) goes through the main finish.
+				if isEvent {
+					env.handler.HandleEventQuestFinish(u, chapterId, questId, false, false, now)
+				} else {
+					env.handler.HandleQuestFinish(u, questId, false, false, now)
+				}
+				applied++
+			}()
 		}
 	})
 	if err != nil {

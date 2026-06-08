@@ -12,6 +12,12 @@ Clearing: the `clear_quests` shim action replays lunar-tear's real finish flow
 granting first-clear + mission + drop rewards, marking cleared, advancing the
 story pointer, and recording side-story scenarios. Already-cleared quests are
 skipped server-side so drops are never re-rolled.
+
+Redo (the REDO button) is the in-game multi-skip for farming: it re-runs an
+already-cleared quest N times. Main quests go through lunar-tear's real
+HandleQuestSkip (drops + gold + EXP per run, no first-clear bonus, no mission
+rewards, story pointer untouched) with its stamina/skip-ticket cost bypassed;
+events have no upstream skip handler, so they replay the event finish N times.
 """
 
 from __future__ import annotations
@@ -320,9 +326,11 @@ def clear_quests(
 
     Default (first-clear) mode skips already-cleared quests server-side so their
     one-time rewards and drops are never re-rolled. In ``redo`` mode the shim
-    re-runs each chosen quest's finish ``repeat`` times instead of skipping it,
-    farming the repeatable drop/mission rewards (the first-clear bonus is gated
-    by the game's own finish logic, so a redo never re-awards it)."""
+    runs the in-game multi-skip ``repeat`` times per quest: main quests via
+    lunar-tear's HandleQuestSkip (drops + gold + EXP, no first-clear, no mission
+    rewards, story pointer untouched, stamina/ticket cost bypassed); events,
+    which have no upstream skip handler, replay the event finish ``repeat``
+    times."""
     if user_id <= 0:
         raise QuestError("user_id must be positive")
     if not quest_ids:

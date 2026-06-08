@@ -171,9 +171,9 @@ type request struct {
 	MemoirSlots      []memoirSlotsSpec      `json:"memoir_slots"`
 	ContentsStoryIDs []int32                `json:"contents_story_ids"`
 	QuestIDs         []int32                `json:"quest_ids"`
-	// Redo re-runs the faithful finish flow for quests the user has already
-	// cleared (Quest Editor REDO), instead of skipping them. Repeat is how
-	// many times each chosen quest is finished in that mode (farming drops).
+	// Redo runs the in-game multi-skip for already-cleared quests (Quest Editor
+	// REDO) instead of skipping them: main quests via HandleQuestSkip, events
+	// via a finish replay. Repeat is how many skips/finishes to run per quest.
 	Redo   bool  `json:"redo"`
 	Repeat int32 `json:"repeat"`
 }
